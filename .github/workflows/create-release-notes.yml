@@ -1,0 +1,78 @@
+name: Create Release Notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Release version (e.g. 1.0.0)"
+        required: true
+        type: string
+
+      applications:
+        description: "Applications to release (comma-separated)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create Draft Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          APPLICATIONS: ${{ inputs.applications }}
+        run: |
+          set -e
+
+          RELEASE_BRANCH="ST_RELEASE_${RELEASE_VERSION}"
+
+          IFS=',' read -ra APPS <<< "$APPLICATIONS"
+
+          for REPO in "${APPS[@]}"; do
+
+            REPO=$(echo "$REPO" | xargs)
+
+            echo "======================================"
+            echo "Processing: $REPO"
+            echo "Release Branch: $RELEASE_BRANCH"
+            echo "======================================"
+
+            # Get main HEAD
+            OLD_COMMIT=$(gh api \
+              repos/${GITHUB_REPOSITORY_OWNER}/${REPO}/git/ref/heads/main \
+              --jq '.object.sha')
+
+            # Get release branch HEAD
+            NEW_COMMIT=$(gh api \
+              repos/${GITHUB_REPOSITORY_OWNER}/${REPO}/git/ref/heads/${RELEASE_BRANCH} \
+              --jq '.object.sha')
+
+            echo "Old Commit: $OLD_COMMIT"
+            echo "New Commit: $NEW_COMMIT"
+
+            TAG="${RELEASE_VERSION}-release-${NEW_COMMIT}"
+
+            # Generate release notes
+            RELEASE_NOTES=$(gh api \
+              repos/${GITHUB_REPOSITORY_OWNER}/${REPO}/releases/generate-notes \
+              -f tag_name="$TAG" \
+              -f target_commitish="$RELEASE_BRANCH" \
+              --jq '.body')
+
+            # Create draft release
+            gh api \
+              repos/${GITHUB_REPOSITORY_OWNER}/${REPO}/releases \
+              -f tag_name="$TAG" \
+              -f target_commitish="$RELEASE_BRANCH" \
+              -f name="${RELEASE_VERSION}" \
+              -f body="$RELEASE_NOTES" \
+              -F draft=true
+
+            echo "Draft release created for $REPO"
+
+          done
