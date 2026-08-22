@@ -29,7 +29,7 @@ jobs:
         run: |
           set -e
 
-          RELEASE_BRANCH="ST_RELEASE_${RELEASE_VERSION}"
+          RELEASE_BRANCH="SG_RELEASE_${RELEASE_VERSION}"
 
           IFS=',' read -ra APPS <<< "$APPLICATIONS"
 
