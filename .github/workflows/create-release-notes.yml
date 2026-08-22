@@ -9,7 +9,7 @@ on:
         type: string
 
       applications:
-        description: "Applications to include (comma-separated, e.g. application-one,application-two)"
+        description: "Applications to release (comma-separated)"
         required: true
         type: string
 
@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   create-release-notes:
-    name: Create Draft Releases
+    name: Create and Publish Releases
     runs-on: ubuntu-latest
 
     steps:
@@ -77,9 +77,9 @@ jobs:
           echo "Release Branch: ${RELEASE_BRANCH}"
 
       # ---------------------------------------------------------
-      # 5. Create Draft Releases
+      # 5. Create Releases
       # ---------------------------------------------------------
-      - name: Create Draft Releases
+      - name: Create GitHub Releases
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
@@ -104,109 +104,95 @@ jobs:
             echo "======================================"
 
             # ---------------------------------------------------
-            # Check Release Branch
+            # Get release branch commit
             # ---------------------------------------------------
-            echo "Checking release branch..."
-
-            gh api \
-              "repos/${ORGANIZATION}/${REPO}/git/ref/heads/${RELEASE_BRANCH}" \
-              > /dev/null
-
-            echo "Release branch exists."
-
-            # ---------------------------------------------------
-            # Get MAIN commit
-            # ---------------------------------------------------
-            echo "Getting main branch commit..."
-
-            OLD_COMMIT=$(gh api \
-              "repos/${ORGANIZATION}/${REPO}/git/ref/heads/main" \
-              --jq '.object.sha')
-
-            OLD_COMMIT_SHORT="${OLD_COMMIT:0:7}"
-
-            echo "Old Commit: ${OLD_COMMIT_SHORT}"
-
-            # ---------------------------------------------------
-            # Get RELEASE branch commit
-            # ---------------------------------------------------
-            echo "Getting release branch commit..."
-
             NEW_COMMIT=$(gh api \
               "repos/${ORGANIZATION}/${REPO}/git/ref/heads/${RELEASE_BRANCH}" \
               --jq '.object.sha')
 
-            NEW_COMMIT_SHORT="${NEW_COMMIT:0:7}"
+            SHORT_COMMIT="${NEW_COMMIT:0:7}"
 
-            echo "New Commit: ${NEW_COMMIT_SHORT}"
-
-            # ---------------------------------------------------
-            # Generate Release Tag
-            # ---------------------------------------------------
-            TAG="${RELEASE_VERSION}-release-${NEW_COMMIT_SHORT}"
-
-            echo "Release Tag: ${TAG}"
+            echo "New Commit      : ${NEW_COMMIT}"
+            echo "Short Commit    : ${SHORT_COMMIT}"
 
             # ---------------------------------------------------
-            # Get commits between MAIN and RELEASE branch
+            # Create new release tag
+            # Example:
+            # 1.0.1-release-6c4db90
             # ---------------------------------------------------
-            echo "Getting changes between main and release branch..."
+            NEW_TAG="${RELEASE_VERSION}-release-${SHORT_COMMIT}"
 
-            COMPARE_RESULT=$(gh api \
-              "repos/${ORGANIZATION}/${REPO}/compare/${OLD_COMMIT}...${NEW_COMMIT}")
+            echo "New Tag: ${NEW_TAG}"
 
-            COMMIT_COUNT=$(echo "${COMPARE_RESULT}" | jq '.total_commits')
+            # ---------------------------------------------------
+            # Check if tag already exists
+            # ---------------------------------------------------
+            if gh api \
+              "repos/${ORGANIZATION}/${REPO}/git/ref/tags/${NEW_TAG}" \
+              > /dev/null 2>&1; then
 
-            echo "Commits in release: ${COMMIT_COUNT}"
+              echo "Tag ${NEW_TAG} already exists."
+
+            else
+
+              echo "Creating tag ${NEW_TAG}..."
+
+              gh api \
+                --method POST \
+                "repos/${ORGANIZATION}/${REPO}/git/refs" \
+                -f "ref=refs/tags/${NEW_TAG}" \
+                -f "sha=${NEW_COMMIT}"
+
+              echo "Tag created successfully."
+
+            fi
+
+            # ---------------------------------------------------
+            # Find previous tag
+            # ---------------------------------------------------
+            echo "Finding previous tag..."
+
+            OLD_TAG=$(gh api \
+              "repos/${ORGANIZATION}/${REPO}/releases/latest" \
+              --jq '.tag_name')
+
+            echo "Previous Tag: ${OLD_TAG}"
 
             # ---------------------------------------------------
             # Generate Release Notes
             # ---------------------------------------------------
-            RELEASE_NOTES="## Release ${RELEASE_VERSION}
+            echo "Generating release notes..."
 
-            **Repository:** ${REPO}
+            RELEASE_NOTES=$(gh api \
+              --method POST \
+              "repos/${ORGANIZATION}/${REPO}/releases/generate-notes" \
+              -f "tag_name=${NEW_TAG}" \
+              -f "target_commitish=main" \
+              -f "previous_tag_name=${OLD_TAG}" \
+              --jq '.body')
 
-            **Release Branch:** \`${RELEASE_BRANCH}\`
-
-            **Previous Commit:** \`${OLD_COMMIT_SHORT}\`
-
-            **Release Commit:** \`${NEW_COMMIT_SHORT}\`
-
-            ### Changes
-
-            "
-
-            CHANGE_LIST=$(echo "${COMPARE_RESULT}" | jq -r '
-              .commits[] |
-              "- " + (.commit.message | split("\n")[0])
-            ')
-
-            if [[ -n "${CHANGE_LIST}" ]]; then
-              RELEASE_NOTES="${RELEASE_NOTES}${CHANGE_LIST}"
-            else
-              RELEASE_NOTES="${RELEASE_NOTES}- No changes found"
-            fi
-
-            echo ""
-            echo "Release Notes:"
-            echo "${RELEASE_NOTES}"
+            echo "Release notes generated."
 
             # ---------------------------------------------------
-            # Create Draft GitHub Release
+            # Create and Publish Release
             # ---------------------------------------------------
-            echo ""
-            echo "Creating draft release..."
+            echo "Creating GitHub Release..."
 
             gh api \
+              --method POST \
               "repos/${ORGANIZATION}/${REPO}/releases" \
-              -f "tag_name=${TAG}" \
-              -f "target_commitish=${RELEASE_BRANCH}" \
+              -f "tag_name=${NEW_TAG}" \
+              -f "target_commitish=main" \
               -f "name=${RELEASE_VERSION}" \
               -f "body=${RELEASE_NOTES}" \
-              -F draft=true
+              -F draft=false \
+              -F prerelease=false
 
             echo ""
-            echo "✅ Draft release created successfully for ${REPO}"
+            echo "✅ Release published successfully"
+            echo "Repository : ${REPO}"
+            echo "Old Tag    : ${OLD_TAG}"
+            echo "New Tag    : ${NEW_TAG}"
 
           done
 
@@ -223,8 +209,7 @@ jobs:
           RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-
-          # 🚀 Release Notes Generation
+          # 🚀 Release Creation
 
           ## Release Details
 
@@ -233,18 +218,16 @@ jobs:
           | Release Version | \`${RELEASE_VERSION}\` |
           | Organization | \`${ORGANIZATION}\` |
           | Release Branch | \`${RELEASE_BRANCH}\` |
+          | Target Branch | \`main\` |
           | Applications | \`${APPLICATIONS}\` |
 
           ## Actions Performed
 
-          - ✅ Release version received
-          - ✅ Organization detected
           - ✅ Release branch identified
-          - ✅ Main commit identified
           - ✅ Release branch commit identified
           - ✅ Short commit ID generated
-          - ✅ Changes between main and release branch identified
+          - ✅ Release tag created
+          - ✅ Previous tag identified
           - ✅ Release notes generated
-          - ✅ Draft GitHub Release created
-
+          - ✅ GitHub Release published
           EOF
