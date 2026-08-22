@@ -93,7 +93,7 @@ jobs:
           RELEASE_NAME: ${{ inputs.release_name }}
           RELEASE_NUMBER: ${{ inputs.release_number }}
         run: |
-          BRANCH_NAME="release/${RELEASE_NAME}-${RELEASE_NUMBER}"
+          BRANCH_NAME="release/${RELEASE_NAME}_${RELEASE_NUMBER}"
 
           echo "BRANCH_NAME=${BRANCH_NAME}" >> "$GITHUB_ENV"
 
