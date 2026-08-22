@@ -1,4 +1,4 @@
-name: Create Release Branch for All Application
+name: Create Release Branch for All Applications
 
 on:
   workflow_dispatch:
@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           echo "========================================================"
-          echo "       CREATE RELEASE BRANCH FOR ALL APPLICATION"
+          echo "       CREATE RELEASE BRANCH FOR ALL APPLICATIONS"
           echo "========================================================"
           echo ""
           echo "[1/7] Reading release inputs"
@@ -57,24 +57,22 @@ jobs:
           echo "ORGANIZATION=${ORGANIZATION}" >> "$GITHUB_ENV"
 
       # ---------------------------------------------------------
-      # 3. Generate GitHub App token
+      # 3. Validate PAT
       # ---------------------------------------------------------
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.RELEASE_AUTOMATION_APP_ID }}
-          private-key: ${{ secrets.RELEASE_AUTOMATION_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: application-one,application-two
-
-      - name: Display Authentication Status
+      - name: Validate Release Automation Token
         shell: bash
+        env:
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
-          echo "[3/7] Authenticating with GitHub App"
+          echo "[3/7] Validating GitHub authentication"
           echo ""
-          echo "      GitHub App     : Release Automation App"
-          echo "      Status         : Authentication successful"
+
+          if [[ -z "${RELEASE_AUTOMATION_TOKEN}" ]]; then
+            echo "::error::RELEASE_AUTOMATION_TOKEN is not configured."
+            exit 1
+          fi
+
+          echo "      Authentication : ✓ Token configured"
           echo "      Access         : application-one, application-two"
           echo ""
 
@@ -86,15 +84,18 @@ jobs:
         with:
           repository: ${{ env.ORGANIZATION }}/application-one
           ref: main
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           path: application-one
 
+      # ---------------------------------------------------------
+      # Checkout Application Two
+      # ---------------------------------------------------------
       - name: Checkout Application Two
         uses: actions/checkout@v4
         with:
           repository: ${{ env.ORGANIZATION }}/application-two
           ref: main
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           path: application-two
 
       - name: Display Repository Status
@@ -120,11 +121,14 @@ jobs:
       # ---------------------------------------------------------
       - name: Generate Release Branch Name
         shell: bash
+        env:
+          RELEASE_NAME: ${{ inputs.release_name }}
+          RELEASE_NUMBER: ${{ inputs.release_number }}
         run: |
           echo "[5/7] Preparing release branch"
           echo ""
 
-          BRANCH_NAME="release/${{ inputs.release_name }}-${{ inputs.release_number }}"
+          BRANCH_NAME="release/${RELEASE_NAME}-${RELEASE_NUMBER}"
 
           echo "      Branch name:"
           echo "      ${BRANCH_NAME}"
@@ -142,17 +146,17 @@ jobs:
           echo "[6/7] Application One"
           echo ""
 
-          echo "      Source branch                 : main"
-          echo "      Creating release branch       : ${BRANCH_NAME}"
+          echo "      Source branch           : main"
+          echo "      Creating release branch : ${BRANCH_NAME}"
 
           git checkout -b "${BRANCH_NAME}"
 
-          echo "      Branch created                : ✓"
-          echo "      Pushing branch                : ${BRANCH_NAME}"
+          echo "      Branch created          : ✓"
+          echo "      Pushing branch          : ${BRANCH_NAME}"
 
           git push origin "${BRANCH_NAME}"
 
-          echo "      Branch pushed                 : ✓"
+          echo "      Branch pushed           : ✓"
           echo ""
 
       - name: Create Branch in Application Two
@@ -162,17 +166,17 @@ jobs:
           echo "[6/7] Application Two"
           echo ""
 
-          echo "      Source branch                 : main"
-          echo "      Creating release branch       : ${BRANCH_NAME}"
+          echo "      Source branch           : main"
+          echo "      Creating release branch : ${BRANCH_NAME}"
 
           git checkout -b "${BRANCH_NAME}"
 
-          echo "      Branch created                : ✓"
-          echo "      Pushing branch                : ${BRANCH_NAME}"
+          echo "      Branch created          : ✓"
+          echo "      Pushing branch          : ${BRANCH_NAME}"
 
           git push origin "${BRANCH_NAME}"
 
-          echo "      Branch pushed                 : ✓"
+          echo "      Branch pushed           : ✓"
           echo ""
 
       # ---------------------------------------------------------
