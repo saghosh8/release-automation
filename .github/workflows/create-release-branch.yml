@@ -1,4 +1,4 @@
-name: Create Release Branch for All Application
+name: Create Release Branch for All Applications
 
 on:
   workflow_dispatch:
@@ -26,18 +26,14 @@ jobs:
       # ---------------------------------------------------------
       # 1. Read release inputs
       # ---------------------------------------------------------
-      - name: Display Release Information
+      - name: Read Release Information
         shell: bash
+        env:
+          RELEASE_NAME: ${{ inputs.release_name }}
+          RELEASE_NUMBER: ${{ inputs.release_number }}
         run: |
-          echo "========================================================"
-          echo "       CREATE RELEASE BRANCH FOR ALL APPLICATION"
-          echo "========================================================"
-          echo ""
-          echo "[1/7] Reading release inputs"
-          echo ""
-          echo "      Release Name   : ${{ inputs.release_name }}"
-          echo "      Release Number : ${{ inputs.release_number }}"
-          echo ""
+          echo "Release Name   : ${RELEASE_NAME}"
+          echo "Release Number : ${RELEASE_NUMBER}"
 
       # ---------------------------------------------------------
       # 2. Detect organization
@@ -45,38 +41,26 @@ jobs:
       - name: Detect GitHub Organization
         shell: bash
         run: |
-          echo "[2/7] Detecting GitHub organization"
-          echo ""
-
           ORGANIZATION="${{ github.repository_owner }}"
 
-          echo "      Organization   : ${ORGANIZATION}"
-          echo "      Source Repo    : ${{ github.repository }}"
-          echo ""
+          echo "Organization: ${ORGANIZATION}"
 
           echo "ORGANIZATION=${ORGANIZATION}" >> "$GITHUB_ENV"
 
       # ---------------------------------------------------------
-      # 3. Generate GitHub App token
+      # 3. Validate PAT
       # ---------------------------------------------------------
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.RELEASE_AUTOMATION_APP_ID }}
-          private-key: ${{ secrets.RELEASE_AUTOMATION_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: application-one,application-two
-
-      - name: Display Authentication Status
+      - name: Validate Release Automation Token
         shell: bash
+        env:
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
-          echo "[3/7] Authenticating with GitHub App"
-          echo ""
-          echo "      GitHub App     : Release Automation App"
-          echo "      Status         : Authentication successful"
-          echo "      Access         : application-one, application-two"
-          echo ""
+          if [[ -z "${RELEASE_AUTOMATION_TOKEN}" ]]; then
+            echo "::error::RELEASE_AUTOMATION_TOKEN is not configured."
+            exit 1
+          fi
+
+          echo "GitHub authentication token configured successfully."
 
       # ---------------------------------------------------------
       # 4. Checkout Application One
@@ -86,117 +70,124 @@ jobs:
         with:
           repository: ${{ env.ORGANIZATION }}/application-one
           ref: main
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           path: application-one
 
+      # ---------------------------------------------------------
+      # Checkout Application Two
+      # ---------------------------------------------------------
       - name: Checkout Application Two
         uses: actions/checkout@v4
         with:
           repository: ${{ env.ORGANIZATION }}/application-two
           ref: main
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           path: application-two
-
-      - name: Display Repository Status
-        shell: bash
-        run: |
-          echo "[4/7] Validating repositories"
-          echo ""
-
-          echo "      Application One"
-          echo "      Repository     : ${ORGANIZATION}/application-one"
-          echo "      Branch         : main"
-          echo "      Status         : ✓ Available"
-          echo ""
-
-          echo "      Application Two"
-          echo "      Repository     : ${ORGANIZATION}/application-two"
-          echo "      Branch         : main"
-          echo "      Status         : ✓ Available"
-          echo ""
 
       # ---------------------------------------------------------
       # 5. Generate branch name
       # ---------------------------------------------------------
       - name: Generate Release Branch Name
         shell: bash
+        env:
+          RELEASE_NAME: ${{ inputs.release_name }}
+          RELEASE_NUMBER: ${{ inputs.release_number }}
         run: |
-          echo "[5/7] Preparing release branch"
-          echo ""
-
-          BRANCH_NAME="release/${{ inputs.release_name }}-${{ inputs.release_number }}"
-
-          echo "      Branch name:"
-          echo "      ${BRANCH_NAME}"
-          echo ""
+          BRANCH_NAME="release/${RELEASE_NAME}_${RELEASE_NUMBER}"
 
           echo "BRANCH_NAME=${BRANCH_NAME}" >> "$GITHUB_ENV"
 
       # ---------------------------------------------------------
-      # 6. Create branch in both repositories
+      # 6. Create branch - Application One
       # ---------------------------------------------------------
-      - name: Create Branch in Application One
+      - name: Create Release Branch - Application One
+        id: app1
         working-directory: application-one
         shell: bash
         run: |
-          echo "[6/7] Application One"
-          echo ""
-
-          echo "      Source branch                 : main"
-          echo "      Creating release branch       : ${BRANCH_NAME}"
-
           git checkout -b "${BRANCH_NAME}"
-
-          echo "      Branch created                : ✓"
-          echo "      Pushing branch                : ${BRANCH_NAME}"
-
           git push origin "${BRANCH_NAME}"
 
-          echo "      Branch pushed                 : ✓"
-          echo ""
+          echo "APP1_STATUS=SUCCESS" >> "$GITHUB_OUTPUT"
 
-      - name: Create Branch in Application Two
+      # ---------------------------------------------------------
+      # Create branch - Application Two
+      # ---------------------------------------------------------
+      - name: Create Release Branch - Application Two
+        id: app2
         working-directory: application-two
         shell: bash
         run: |
-          echo "[6/7] Application Two"
-          echo ""
-
-          echo "      Source branch                 : main"
-          echo "      Creating release branch       : ${BRANCH_NAME}"
-
           git checkout -b "${BRANCH_NAME}"
-
-          echo "      Branch created                : ✓"
-          echo "      Pushing branch                : ${BRANCH_NAME}"
-
           git push origin "${BRANCH_NAME}"
 
-          echo "      Branch pushed                 : ✓"
-          echo ""
+          echo "APP2_STATUS=SUCCESS" >> "$GITHUB_OUTPUT"
 
       # ---------------------------------------------------------
-      # 7. Final summary
+      # 7. GitHub Actions Job Summary
       # ---------------------------------------------------------
-      - name: Release Summary
+      - name: Generate Release Summary
+        if: always()
         shell: bash
+        env:
+          RELEASE_NAME: ${{ inputs.release_name }}
+          RELEASE_NUMBER: ${{ inputs.release_number }}
+          ORGANIZATION: ${{ env.ORGANIZATION }}
+          BRANCH_NAME: ${{ env.BRANCH_NAME }}
+          APP1_RESULT: ${{ steps.app1.outcome }}
+          APP2_RESULT: ${{ steps.app2.outcome }}
         run: |
-          echo ""
-          echo "========================================================"
-          echo "                    RELEASE SUMMARY"
-          echo "========================================================"
-          echo ""
-          echo "Release Name   : ${{ inputs.release_name }}"
-          echo "Release Number : ${{ inputs.release_number }}"
-          echo "Organization   : ${ORGANIZATION}"
-          echo ""
-          echo "Repositories:"
-          echo ""
-          echo "  ✓ application-one"
-          echo "    → ${BRANCH_NAME}"
-          echo ""
-          echo "  ✓ application-two"
-          echo "    → ${BRANCH_NAME}"
-          echo ""
-          echo "Result: SUCCESS"
-          echo "========================================================"
+          if [[ "${APP1_RESULT}" == "success" ]]; then
+            APP1_STATUS="✅ Success"
+          else
+            APP1_STATUS="❌ Failed"
+          fi
+
+          if [[ "${APP2_RESULT}" == "success" ]]; then
+            APP2_STATUS="✅ Success"
+          else
+            APP2_STATUS="❌ Failed"
+          fi
+
+          if [[ "${APP1_RESULT}" == "success" && "${APP2_RESULT}" == "success" ]]; then
+            OVERALL_STATUS="✅ Release branch creation completed successfully"
+          else
+            OVERALL_STATUS="❌ Release branch creation failed"
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # 🚀 Release Branch Creation
+
+          ## Release Details
+
+          | Field | Value |
+          |---|---|
+          | Release Name | \`${RELEASE_NAME}\` |
+          | Release Number | \`${RELEASE_NUMBER}\` |
+          | Organization | \`${ORGANIZATION}\` |
+          | Source Branch | \`main\` |
+          | Release Branch | \`${BRANCH_NAME}\` |
+
+          ## Repository Results
+
+          | Repository | Source | Release Branch | Status |
+          |---|---|---|---|
+          | application-one | \`main\` | \`${BRANCH_NAME}\` | ${APP1_STATUS} |
+          | application-two | \`main\` | \`${BRANCH_NAME}\` | ${APP2_STATUS} |
+
+          ## Overall Result
+
+          ${OVERALL_STATUS}
+
+          ## Actions Performed
+
+          - ✅ Release inputs received
+          - ✅ Organization detected automatically
+          - ✅ GitHub authentication validated
+          - ✅ Application repositories checked out
+          - ✅ Release branch generated
+          - ${APP1_STATUS} Branch created and pushed for **application-one**
+          - ${APP2_STATUS} Branch created and pushed for **application-two**
+
+          > **Note:** No application files were modified in this workflow. This stage only creates the release branches.
+          EOF
