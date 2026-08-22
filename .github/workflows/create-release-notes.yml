@@ -152,24 +152,37 @@ jobs:
             # ---------------------------------------------------
             echo "Finding previous tag..."
 
-            OLD_TAG=$(gh api \
-              "repos/${ORGANIZATION}/${REPO}/releases/latest" \
-              --jq '.tag_name')
-
-            echo "Previous Tag: ${OLD_TAG}"
+            OLD_TAG=""
+            if gh api "repos/${ORGANIZATION}/${REPO}/releases/latest" --jq '.tag_name' > /tmp/latest_tag.txt 2>/dev/null; then
+              OLD_TAG=$(cat /tmp/latest_tag.txt)
+              echo "Previous Tag: ${OLD_TAG}"
+            else
+              echo "No previous release found. This is the first release."
+            fi
 
             # ---------------------------------------------------
             # Generate Release Notes
             # ---------------------------------------------------
             echo "Generating release notes..."
 
-            RELEASE_NOTES=$(gh api \
-              --method POST \
-              "repos/${ORGANIZATION}/${REPO}/releases/generate-notes" \
-              -f "tag_name=${NEW_TAG}" \
-              -f "target_commitish=main" \
-              -f "previous_tag_name=${OLD_TAG}" \
-              --jq '.body')
+            if [[ -z "${OLD_TAG}" ]]; then
+              # First release - generate notes without previous tag
+              RELEASE_NOTES=$(gh api \
+                --method POST \
+                "repos/${ORGANIZATION}/${REPO}/releases/generate-notes" \
+                -f "tag_name=${NEW_TAG}" \
+                -f "target_commitish=main" \
+                --jq '.body')
+            else
+              # Subsequent release - generate notes since previous tag
+              RELEASE_NOTES=$(gh api \
+                --method POST \
+                "repos/${ORGANIZATION}/${REPO}/releases/generate-notes" \
+                -f "tag_name=${NEW_TAG}" \
+                -f "target_commitish=main" \
+                -f "previous_tag_name=${OLD_TAG}" \
+                --jq '.body')
+            fi
 
             echo "Release notes generated."
 
@@ -191,7 +204,7 @@ jobs:
             echo ""
             echo "✅ Release published successfully"
             echo "Repository : ${REPO}"
-            echo "Old Tag    : ${OLD_TAG}"
+            echo "Old Tag    : ${OLD_TAG:-"(first release)"}"
             echo "New Tag    : ${NEW_TAG}"
 
           done
