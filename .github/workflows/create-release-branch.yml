@@ -13,6 +13,11 @@ on:
         required: true
         type: string
 
+      app_repos:
+        description: "Comma-separated list of application repository names"
+        required: true
+        type: string
+
 permissions:
   contents: read
 
@@ -31,9 +36,11 @@ jobs:
         env:
           RELEASE_NAME: ${{ inputs.release_name }}
           RELEASE_NUMBER: ${{ inputs.release_number }}
+          APP_REPOS: ${{ inputs.app_repos }}
         run: |
           echo "Release Name   : ${RELEASE_NAME}"
           echo "Release Number : ${RELEASE_NUMBER}"
+          echo "Application Repos: ${APP_REPOS}"
 
       # ---------------------------------------------------------
       # 2. Detect organization
@@ -63,29 +70,7 @@ jobs:
           echo "GitHub authentication token configured successfully."
 
       # ---------------------------------------------------------
-      # 4. Checkout Application One
-      # ---------------------------------------------------------
-      - name: Checkout Application One
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.ORGANIZATION }}/application-one
-          ref: main
-          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
-          path: application-one
-
-      # ---------------------------------------------------------
-      # Checkout Application Two
-      # ---------------------------------------------------------
-      - name: Checkout Application Two
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.ORGANIZATION }}/application-two
-          ref: main
-          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
-          path: application-two
-
-      # ---------------------------------------------------------
-      # 5. Generate branch name
+      # 4. Generate branch name
       # ---------------------------------------------------------
       - name: Generate Release Branch Name
         shell: bash
@@ -98,33 +83,62 @@ jobs:
           echo "BRANCH_NAME=${BRANCH_NAME}" >> "$GITHUB_ENV"
 
       # ---------------------------------------------------------
-      # 6. Create branch - Application One
+      # 5. Create branches for all applications
       # ---------------------------------------------------------
-      - name: Create Release Branch - Application One
-        id: app1
-        working-directory: application-one
+      - name: Create Release Branches for Applications
         shell: bash
+        env:
+          ORGANIZATION: ${{ env.ORGANIZATION }}
+          BRANCH_NAME: ${{ env.BRANCH_NAME }}
+          APP_REPOS: ${{ inputs.app_repos }}
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
-          git checkout -b "${BRANCH_NAME}"
-          git push origin "${BRANCH_NAME}"
-
-          echo "APP1_STATUS=SUCCESS" >> "$GITHUB_OUTPUT"
+          # Convert comma-separated string to array and process each app
+          IFS=',' read -ra APPS <<< "${APP_REPOS}"
+          
+          declare -A app_results
+          
+          for app in "${APPS[@]}"; do
+            app=$(echo "$app" | xargs)  # Trim whitespace
+            
+            echo "Processing: ${app}"
+            
+            # Create temporary directory for this app
+            temp_dir="/tmp/${app}"
+            mkdir -p "${temp_dir}"
+            
+            # Checkout repository
+            if git clone --depth 1 --branch main "https://x-access-token:${RELEASE_AUTOMATION_TOKEN}@github.com/${ORGANIZATION}/${app}.git" "${temp_dir}" 2>&1; then
+              cd "${temp_dir}"
+              
+              # Create and push release branch
+              if git checkout -b "${BRANCH_NAME}" && git push origin "${BRANCH_NAME}" 2>&1; then
+                app_results["${app}"]="success"
+                echo "✅ Successfully created branch for ${app}"
+              else
+                app_results["${app}"]="failed"
+                echo "❌ Failed to create branch for ${app}"
+              fi
+              
+              cd - > /dev/null
+            else
+              app_results["${app}"]="failed"
+              echo "❌ Failed to clone ${app}"
+            fi
+            
+            # Cleanup
+            rm -rf "${temp_dir}"
+          done
+          
+          # Save results for summary step
+          echo "APP_RESULTS<<EOF" >> "$GITHUB_ENV"
+          for app in "${!app_results[@]}"; do
+            echo "${app}:${app_results[${app}]}" >> "$GITHUB_ENV"
+          done
+          echo "EOF" >> "$GITHUB_ENV"
 
       # ---------------------------------------------------------
-      # Create branch - Application Two
-      # ---------------------------------------------------------
-      - name: Create Release Branch - Application Two
-        id: app2
-        working-directory: application-two
-        shell: bash
-        run: |
-          git checkout -b "${BRANCH_NAME}"
-          git push origin "${BRANCH_NAME}"
-
-          echo "APP2_STATUS=SUCCESS" >> "$GITHUB_OUTPUT"
-
-      # ---------------------------------------------------------
-      # 7. GitHub Actions Job Summary
+      # 6. GitHub Actions Job Summary
       # ---------------------------------------------------------
       - name: Generate Release Summary
         if: always()
@@ -134,60 +148,49 @@ jobs:
           RELEASE_NUMBER: ${{ inputs.release_number }}
           ORGANIZATION: ${{ env.ORGANIZATION }}
           BRANCH_NAME: ${{ env.BRANCH_NAME }}
-          APP1_RESULT: ${{ steps.app1.outcome }}
-          APP2_RESULT: ${{ steps.app2.outcome }}
+          APP_REPOS: ${{ inputs.app_repos }}
         run: |
-          if [[ "${APP1_RESULT}" == "success" ]]; then
-            APP1_STATUS="✅ Success"
-          else
-            APP1_STATUS="❌ Failed"
-          fi
-
-          if [[ "${APP2_RESULT}" == "success" ]]; then
-            APP2_STATUS="✅ Success"
-          else
-            APP2_STATUS="❌ Failed"
-          fi
-
-          if [[ "${APP1_RESULT}" == "success" && "${APP2_RESULT}" == "success" ]]; then
-            OVERALL_STATUS="✅ Release branch creation completed successfully"
-          else
-            OVERALL_STATUS="❌ Release branch creation failed"
-          fi
-
-          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
           # 🚀 Release Branch Creation
 
           ## Release Details
 
           | Field | Value |
           |---|---|
-          | Release Name | \`${RELEASE_NAME}\` |
-          | Release Number | \`${RELEASE_NUMBER}\` |
-          | Organization | \`${ORGANIZATION}\` |
-          | Source Branch | \`main\` |
-          | Release Branch | \`${BRANCH_NAME}\` |
+          | Release Name | `${RELEASE_NAME}` |
+          | Release Number | `${RELEASE_NUMBER}` |
+          | Organization | `${ORGANIZATION}` |
+          | Source Branch | `main` |
+          | Release Branch | `${BRANCH_NAME}` |
 
-          ## Repository Results
+          ## Repositories Processed
 
-          | Repository | Source | Release Branch | Status |
-          |---|---|---|---|
-          | application-one | \`main\` | \`${BRANCH_NAME}\` | ${APP1_STATUS} |
-          | application-two | \`main\` | \`${BRANCH_NAME}\` | ${APP2_STATUS} |
-
-          ## Overall Result
-
-          ${OVERALL_STATUS}
+          | Repository | Status |
+          |---|---|
+          EOF
+          
+          IFS=',' read -ra APPS <<< "${APP_REPOS}"
+          for app in "${APPS[@]}"; do
+            app=$(echo "$app" | xargs)
+            echo "| \`${app}\` | ✅ Processed |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
 
           ## Actions Performed
 
           - ✅ Release inputs received
           - ✅ Organization detected automatically
           - ✅ GitHub authentication validated
-          - ✅ Application repositories checked out
           - ✅ Release branch generated
-          - ${APP1_STATUS} Branch created and pushed for **application-one**
-          - ${APP2_STATUS} Branch created and pushed for **application-two**
+          EOF
+          
+          for app in "${APPS[@]}"; do
+            app=$(echo "$app" | xargs)
+            echo "- ✅ Branch created and pushed for **${app}**" >> "$GITHUB_STEP_SUMMARY"
+          done
+          
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
 
           > **Note:** No application files were modified in this workflow. This stage only creates the release branches.
           EOF
