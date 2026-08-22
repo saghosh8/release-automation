@@ -3,20 +3,20 @@
 Automates multi-repository release branch creation and release note / GitHub Release generation using GitHub Actions.
 
 ## Table of contents
-- About
-- Features
-- How it works
-- Files
-- Prerequisites
-- Usage
-  - Create Release Branches
-  - Create Release Notes & Publish Releases
-- Inputs & required secrets
-- Security notes
-- Troubleshooting
-- Suggested CV / interview bullets
-- Contributing
-- License
+- [About](#about)  
+- [Features](#features)  
+- [How it works](#how-it-works-high-level)  
+- [Files](#files)  
+- [Prerequisites](#prerequisites)  
+- [Usage](#usage)  
+  - [Create Release Branches](#create-release-branches)  
+  - [Create Release Notes & Publish Releases](#create-release-notes--publish-releases)  
+- [Inputs & required secrets](#inputs--required-secrets)  
+- [Security notes](#security-notes)  
+- [Troubleshooting](#troubleshooting)  
+- [Suggested CV / interview bullets](#suggested-cv--interview-bullets)  
+- [Contributing](#contributing)  
+- [License](#license)
 
 ## About
 This repository contains reusable GitHub Actions workflows to:
