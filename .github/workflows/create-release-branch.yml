@@ -24,7 +24,7 @@ jobs:
     steps:
 
       # ---------------------------------------------------------
-      # 1. Read Release Inputs
+      # 1. Read release inputs
       # ---------------------------------------------------------
       - name: Read Release Information
         shell: bash
@@ -36,17 +36,19 @@ jobs:
           echo "Release Number : ${RELEASE_NUMBER}"
 
       # ---------------------------------------------------------
-      # 2. Detect GitHub Organization
+      # 2. Detect organization
       # ---------------------------------------------------------
       - name: Detect GitHub Organization
         shell: bash
         run: |
           ORGANIZATION="${{ github.repository_owner }}"
+
           echo "Organization: ${ORGANIZATION}"
+
           echo "ORGANIZATION=${ORGANIZATION}" >> "$GITHUB_ENV"
 
       # ---------------------------------------------------------
-      # 3. Validate Release Automation Token
+      # 3. Validate PAT
       # ---------------------------------------------------------
       - name: Validate Release Automation Token
         shell: bash
@@ -57,6 +59,7 @@ jobs:
             echo "::error::RELEASE_AUTOMATION_TOKEN is not configured."
             exit 1
           fi
+
           echo "GitHub authentication token configured successfully."
 
       # ---------------------------------------------------------
@@ -71,7 +74,7 @@ jobs:
           path: application-one
 
       # ---------------------------------------------------------
-      # 5. Checkout Application Two
+      # Checkout Application Two
       # ---------------------------------------------------------
       - name: Checkout Application Two
         uses: actions/checkout@v4
@@ -82,7 +85,7 @@ jobs:
           path: application-two
 
       # ---------------------------------------------------------
-      # 6. Generate Release Branch Name
+      # 5. Generate branch name
       # ---------------------------------------------------------
       - name: Generate Release Branch Name
         shell: bash
@@ -90,12 +93,12 @@ jobs:
           RELEASE_NAME: ${{ inputs.release_name }}
           RELEASE_NUMBER: ${{ inputs.release_number }}
         run: |
-          BRANCH_NAME="release/${RELEASE_NAME}_${RELEASE_NUMBER}"
+          BRANCH_NAME="release/${RELEASE_NAME}-${RELEASE_NUMBER}"
+
           echo "BRANCH_NAME=${BRANCH_NAME}" >> "$GITHUB_ENV"
-          echo "Release Branch: ${BRANCH_NAME}"
 
       # ---------------------------------------------------------
-      # 7. Create Release Branch - Application One
+      # 6. Create branch - Application One
       # ---------------------------------------------------------
       - name: Create Release Branch - Application One
         id: app1
@@ -104,10 +107,11 @@ jobs:
         run: |
           git checkout -b "${BRANCH_NAME}"
           git push origin "${BRANCH_NAME}"
+
           echo "APP1_STATUS=SUCCESS" >> "$GITHUB_OUTPUT"
 
       # ---------------------------------------------------------
-      # 8. Create Release Branch - Application Two
+      # Create branch - Application Two
       # ---------------------------------------------------------
       - name: Create Release Branch - Application Two
         id: app2
@@ -116,10 +120,11 @@ jobs:
         run: |
           git checkout -b "${BRANCH_NAME}"
           git push origin "${BRANCH_NAME}"
+
           echo "APP2_STATUS=SUCCESS" >> "$GITHUB_OUTPUT"
 
       # ---------------------------------------------------------
-      # 9. Generate Release Summary
+      # 7. GitHub Actions Job Summary
       # ---------------------------------------------------------
       - name: Generate Release Summary
         if: always()
