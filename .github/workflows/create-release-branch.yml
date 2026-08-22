@@ -1,4 +1,4 @@
-name: Create Release Branch for All Applications
+name: Create Release Branchs
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
     steps:
 
       # ---------------------------------------------------------
-      # 1. Read release inputs
+      # 1. Read Release Inputs
       # ---------------------------------------------------------
       - name: Read Release Information
         shell: bash
@@ -36,19 +36,17 @@ jobs:
           echo "Release Number : ${RELEASE_NUMBER}"
 
       # ---------------------------------------------------------
-      # 2. Detect organization
+      # 2. Detect GitHub Organization
       # ---------------------------------------------------------
       - name: Detect GitHub Organization
         shell: bash
         run: |
           ORGANIZATION="${{ github.repository_owner }}"
-
           echo "Organization: ${ORGANIZATION}"
-
           echo "ORGANIZATION=${ORGANIZATION}" >> "$GITHUB_ENV"
 
       # ---------------------------------------------------------
-      # 3. Validate PAT
+      # 3. Validate Release Automation Token
       # ---------------------------------------------------------
       - name: Validate Release Automation Token
         shell: bash
@@ -59,11 +57,22 @@ jobs:
             echo "::error::RELEASE_AUTOMATION_TOKEN is not configured."
             exit 1
           fi
-
           echo "GitHub authentication token configured successfully."
 
       # ---------------------------------------------------------
-      # 4. Checkout Application One
+      # 4. Configure Git Authentication
+      # ---------------------------------------------------------
+      - name: Configure Git Authentication
+        shell: bash
+        env:
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          git config --global url."https://${RELEASE_AUTOMATION_TOKEN}@github.com/".insteadOf "https://github.com/"
+          git config --global user.email "release-automation@github.com"
+          git config --global user.name "Release Automation"
+
+      # ---------------------------------------------------------
+      # 5. Checkout Application One
       # ---------------------------------------------------------
       - name: Checkout Application One
         uses: actions/checkout@v4
@@ -74,7 +83,7 @@ jobs:
           path: application-one
 
       # ---------------------------------------------------------
-      # Checkout Application Two
+      # 6. Checkout Application Two
       # ---------------------------------------------------------
       - name: Checkout Application Two
         uses: actions/checkout@v4
@@ -85,7 +94,7 @@ jobs:
           path: application-two
 
       # ---------------------------------------------------------
-      # 5. Generate branch name
+      # 7. Generate Release Branch Name
       # ---------------------------------------------------------
       - name: Generate Release Branch Name
         shell: bash
@@ -93,12 +102,12 @@ jobs:
           RELEASE_NAME: ${{ inputs.release_name }}
           RELEASE_NUMBER: ${{ inputs.release_number }}
         run: |
-          BRANCH_NAME="release/${RELEASE_NAME}-${RELEASE_NUMBER}"
-
+          BRANCH_NAME="release/${RELEASE_NAME}_${RELEASE_NUMBER}"
           echo "BRANCH_NAME=${BRANCH_NAME}" >> "$GITHUB_ENV"
+          echo "Release Branch: ${BRANCH_NAME}"
 
       # ---------------------------------------------------------
-      # 6. Create branch - Application One
+      # 8. Create Release Branch - Application One
       # ---------------------------------------------------------
       - name: Create Release Branch - Application One
         id: app1
@@ -107,11 +116,10 @@ jobs:
         run: |
           git checkout -b "${BRANCH_NAME}"
           git push origin "${BRANCH_NAME}"
-
           echo "APP1_STATUS=SUCCESS" >> "$GITHUB_OUTPUT"
 
       # ---------------------------------------------------------
-      # Create branch - Application Two
+      # 9. Create Release Branch - Application Two
       # ---------------------------------------------------------
       - name: Create Release Branch - Application Two
         id: app2
@@ -120,11 +128,10 @@ jobs:
         run: |
           git checkout -b "${BRANCH_NAME}"
           git push origin "${BRANCH_NAME}"
-
           echo "APP2_STATUS=SUCCESS" >> "$GITHUB_OUTPUT"
 
       # ---------------------------------------------------------
-      # 7. GitHub Actions Job Summary
+      # 10. Generate Release Summary
       # ---------------------------------------------------------
       - name: Generate Release Summary
         if: always()
@@ -184,6 +191,7 @@ jobs:
           - ✅ Release inputs received
           - ✅ Organization detected automatically
           - ✅ GitHub authentication validated
+          - ✅ Git authentication configured
           - ✅ Application repositories checked out
           - ✅ Release branch generated
           - ${APP1_STATUS} Branch created and pushed for **application-one**
