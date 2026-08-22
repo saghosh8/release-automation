@@ -4,75 +4,247 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Release version (e.g. 1.0.0)"
+        description: "Release version (e.g. 1.0.1)"
         required: true
         type: string
 
       applications:
-        description: "Applications to release (comma-separated)"
+        description: "Applications to include (comma-separated, e.g. application-one,application-two)"
         required: true
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  create-release:
+  create-release-notes:
+    name: Create Draft Releases
     runs-on: ubuntu-latest
 
     steps:
-      - name: Create Draft Releases
+
+      # ---------------------------------------------------------
+      # 1. Read Release Information
+      # ---------------------------------------------------------
+      - name: Read Release Information
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_VERSION: ${{ inputs.release_version }}
           APPLICATIONS: ${{ inputs.applications }}
         run: |
-          set -e
+          echo "Release Version : ${RELEASE_VERSION}"
+          echo "Applications     : ${APPLICATIONS}"
 
+      # ---------------------------------------------------------
+      # 2. Detect Organization
+      # ---------------------------------------------------------
+      - name: Detect GitHub Organization
+        shell: bash
+        run: |
+          ORGANIZATION="${{ github.repository_owner }}"
+
+          echo "Organization: ${ORGANIZATION}"
+
+          echo "ORGANIZATION=${ORGANIZATION}" >> "$GITHUB_ENV"
+
+      # ---------------------------------------------------------
+      # 3. Validate PAT
+      # ---------------------------------------------------------
+      - name: Validate Release Automation Token
+        shell: bash
+        env:
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          if [[ -z "${RELEASE_AUTOMATION_TOKEN}" ]]; then
+            echo "::error::RELEASE_AUTOMATION_TOKEN is not configured."
+            exit 1
+          fi
+
+          echo "GitHub authentication token configured successfully."
+
+      # ---------------------------------------------------------
+      # 4. Generate Release Branch
+      # ---------------------------------------------------------
+      - name: Generate Release Branch Name
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
           RELEASE_BRANCH="release/SG_RELEASE_${RELEASE_VERSION}"
 
-          IFS=',' read -ra APPS <<< "$APPLICATIONS"
+          echo "RELEASE_BRANCH=${RELEASE_BRANCH}" >> "$GITHUB_ENV"
+
+          echo "Release Branch: ${RELEASE_BRANCH}"
+
+      # ---------------------------------------------------------
+      # 5. Create Draft Releases
+      # ---------------------------------------------------------
+      - name: Create Draft Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          APPLICATIONS: ${{ inputs.applications }}
+          ORGANIZATION: ${{ env.ORGANIZATION }}
+          RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }}
+        run: |
+
+          set -e
+
+          IFS=',' read -ra APPS <<< "${APPLICATIONS}"
 
           for REPO in "${APPS[@]}"; do
 
-            REPO=$(echo "$REPO" | xargs)
+            REPO=$(echo "${REPO}" | xargs)
 
+            echo ""
             echo "======================================"
-            echo "Processing: $REPO"
-            echo "Release Branch: $RELEASE_BRANCH"
+            echo "Processing: ${REPO}"
+            echo "Release Branch: ${RELEASE_BRANCH}"
             echo "======================================"
 
-            # Get main HEAD
-            OLD_COMMIT=$(gh api \
-              repos/${GITHUB_REPOSITORY_OWNER}/${REPO}/git/ref/heads/main \
-              --jq '.object.sha')
+            # ---------------------------------------------------
+            # Check Release Branch
+            # ---------------------------------------------------
+            echo "Checking release branch..."
 
-            # Get release branch HEAD
-            NEW_COMMIT=$(gh api \
-              repos/${GITHUB_REPOSITORY_OWNER}/${REPO}/git/ref/heads/${RELEASE_BRANCH} \
-              --jq '.object.sha')
-
-            echo "Old Commit: $OLD_COMMIT"
-            echo "New Commit: $NEW_COMMIT"
-
-            TAG="${RELEASE_VERSION}-release-${NEW_COMMIT}"
-
-            # Generate release notes
-            RELEASE_NOTES=$(gh api \
-              repos/${GITHUB_REPOSITORY_OWNER}/${REPO}/releases/generate-notes \
-              -f tag_name="$TAG" \
-              -f target_commitish="$RELEASE_BRANCH" \
-              --jq '.body')
-
-            # Create draft release
             gh api \
-              repos/${GITHUB_REPOSITORY_OWNER}/${REPO}/releases \
-              -f tag_name="$TAG" \
-              -f target_commitish="$RELEASE_BRANCH" \
-              -f name="${RELEASE_VERSION}" \
-              -f body="$RELEASE_NOTES" \
+              "repos/${ORGANIZATION}/${REPO}/git/ref/heads/${RELEASE_BRANCH}" \
+              > /dev/null
+
+            echo "Release branch exists."
+
+            # ---------------------------------------------------
+            # Get MAIN commit
+            # ---------------------------------------------------
+            echo "Getting main branch commit..."
+
+            OLD_COMMIT=$(gh api \
+              "repos/${ORGANIZATION}/${REPO}/git/ref/heads/main" \
+              --jq '.object.sha')
+
+            OLD_COMMIT_SHORT="${OLD_COMMIT:0:7}"
+
+            echo "Old Commit: ${OLD_COMMIT_SHORT}"
+
+            # ---------------------------------------------------
+            # Get RELEASE branch commit
+            # ---------------------------------------------------
+            echo "Getting release branch commit..."
+
+            NEW_COMMIT=$(gh api \
+              "repos/${ORGANIZATION}/${REPO}/git/ref/heads/${RELEASE_BRANCH}" \
+              --jq '.object.sha')
+
+            NEW_COMMIT_SHORT="${NEW_COMMIT:0:7}"
+
+            echo "New Commit: ${NEW_COMMIT_SHORT}"
+
+            # ---------------------------------------------------
+            # Generate Release Tag
+            # ---------------------------------------------------
+            TAG="${RELEASE_VERSION}-release-${NEW_COMMIT_SHORT}"
+
+            echo "Release Tag: ${TAG}"
+
+            # ---------------------------------------------------
+            # Get commits between MAIN and RELEASE branch
+            # ---------------------------------------------------
+            echo "Getting changes between main and release branch..."
+
+            COMPARE_RESULT=$(gh api \
+              "repos/${ORGANIZATION}/${REPO}/compare/${OLD_COMMIT}...${NEW_COMMIT}")
+
+            COMMIT_COUNT=$(echo "${COMPARE_RESULT}" | jq '.total_commits')
+
+            echo "Commits in release: ${COMMIT_COUNT}"
+
+            # ---------------------------------------------------
+            # Generate Release Notes
+            # ---------------------------------------------------
+            RELEASE_NOTES="## Release ${RELEASE_VERSION}
+
+            **Repository:** ${REPO}
+
+            **Release Branch:** \`${RELEASE_BRANCH}\`
+
+            **Previous Commit:** \`${OLD_COMMIT_SHORT}\`
+
+            **Release Commit:** \`${NEW_COMMIT_SHORT}\`
+
+            ### Changes
+
+            "
+
+            CHANGE_LIST=$(echo "${COMPARE_RESULT}" | jq -r '
+              .commits[] |
+              "- " + (.commit.message | split("\n")[0])
+            ')
+
+            if [[ -n "${CHANGE_LIST}" ]]; then
+              RELEASE_NOTES="${RELEASE_NOTES}${CHANGE_LIST}"
+            else
+              RELEASE_NOTES="${RELEASE_NOTES}- No changes found"
+            fi
+
+            echo ""
+            echo "Release Notes:"
+            echo "${RELEASE_NOTES}"
+
+            # ---------------------------------------------------
+            # Create Draft GitHub Release
+            # ---------------------------------------------------
+            echo ""
+            echo "Creating draft release..."
+
+            gh api \
+              "repos/${ORGANIZATION}/${REPO}/releases" \
+              -f "tag_name=${TAG}" \
+              -f "target_commitish=${RELEASE_BRANCH}" \
+              -f "name=${RELEASE_VERSION}" \
+              -f "body=${RELEASE_NOTES}" \
               -F draft=true
 
-            echo "Draft release created for $REPO"
+            echo ""
+            echo "✅ Draft release created successfully for ${REPO}"
 
           done
+
+      # ---------------------------------------------------------
+      # 6. Generate Job Summary
+      # ---------------------------------------------------------
+      - name: Generate Release Summary
+        if: always()
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          APPLICATIONS: ${{ inputs.applications }}
+          ORGANIZATION: ${{ env.ORGANIZATION }}
+          RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+
+          # 🚀 Release Notes Generation
+
+          ## Release Details
+
+          | Field | Value |
+          |---|---|
+          | Release Version | \`${RELEASE_VERSION}\` |
+          | Organization | \`${ORGANIZATION}\` |
+          | Release Branch | \`${RELEASE_BRANCH}\` |
+          | Applications | \`${APPLICATIONS}\` |
+
+          ## Actions Performed
+
+          - ✅ Release version received
+          - ✅ Organization detected
+          - ✅ Release branch identified
+          - ✅ Main commit identified
+          - ✅ Release branch commit identified
+          - ✅ Short commit ID generated
+          - ✅ Changes between main and release branch identified
+          - ✅ Release notes generated
+          - ✅ Draft GitHub Release created
+
+          EOF
