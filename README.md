@@ -14,7 +14,6 @@ Automates multi-repository release branch creation and release note / GitHub Rel
 - [Inputs & required secrets](#inputs--required-secrets)  
 - [Security notes](#security-notes)  
 - [Troubleshooting](#troubleshooting)  
-- [Suggested CV / interview bullets](#suggested-cv--interview-bullets)  
 - [Contributing](#contributing)  
 - [License](#license)
 
