@@ -39,27 +39,22 @@ jobs:
           python3 -m pip install PyYAML
 
       # --------------------------------------------------
-      # Validate input files
+      # Validate input file
       # --------------------------------------------------
-      - name: Validate input files
+      - name: Validate input file
         shell: bash
         run: |
           set -e
 
-          if [ ! -f "input_files/helm_data.yaml" ]; then
-            echo "ERROR: input_files/helm_data.yaml not found"
+          if [ ! -f "input_files/app_config.yaml" ]; then
+            echo "ERROR: input_files/app_config.yaml not found"
             exit 1
           fi
 
-          if [ ! -f "input_files/application_template.yaml" ]; then
-            echo "ERROR: input_files/application_template.yaml not found"
-            exit 1
-          fi
-
-          echo "Input files found."
+          echo "Input file found."
 
       # --------------------------------------------------
-      # Validate helm_data.yaml
+      # Validate app_config.yaml
       # --------------------------------------------------
       - name: Validate application configuration
         shell: bash
@@ -70,24 +65,41 @@ jobs:
           import yaml
           import sys
 
-          file = "input_files/helm_data.yaml"
+          file = "input_files/app_config.yaml"
 
           with open(file, "r") as f:
-              data = yaml.safe_load(f)
+              config = yaml.safe_load(f)
 
           # --------------------------------------------------
-          # Make sure helm_data.yaml contains a YAML mapping
+          # Make sure app_config.yaml contains a YAML mapping
           # --------------------------------------------------
-          if not isinstance(data, dict):
-              print("ERROR: helm_data.yaml must contain key/value pairs.")
+          if not isinstance(config, dict):
+              print("ERROR: app_config.yaml must contain key/value pairs.")
               print("Expected format:")
-              print("APP_NAME: my-app")
-              print("IMAGE_REPOSITORY: my-image")
-              print("IMAGE_TAG: latest")
+              print("values:")
+              print("  APP_NAME: my-app")
+              print("  IMAGE_REPOSITORY: my-image")
+              print("  IMAGE_TAG: latest")
+              print("files:")
+              print("  - path: \"...\"")
+              print("    content: |")
+              print("      ...")
               sys.exit(1)
 
+          if "values" not in config or not isinstance(config["values"], dict):
+              print("ERROR: app_config.yaml must contain a 'values' mapping.")
+              sys.exit(1)
+
+          if "files" not in config or not isinstance(config["files"], list):
+              print("ERROR: app_config.yaml must contain a 'files' list.")
+              sys.exit(1)
+
+          data = config["values"]
+
+          # NOTE: APP_NAME is intentionally not required here.
+          # It is injected per-repository from the "repo_names" input
+          # at generation time (see the "Create repositories" step).
           required = [
-              "APP_NAME",
               "IMAGE_REPOSITORY",
               "IMAGE_TAG",
               "DEV_REPLICA_COUNT",
@@ -122,7 +134,7 @@ jobs:
 
               sys.exit(1)
 
-          print("helm_data.yaml validation successful.")
+          print("app_config.yaml validation successful.")
           PY
 
       # --------------------------------------------------
@@ -219,47 +231,65 @@ jobs:
               -exec rm -rf {} +
 
             # --------------------------------------------------
-            # Generate files from application_template.yaml
+            # Generate files from app_config.yaml
+            # (REPO_NAME is exported so python can read it via os.environ
+            #  and use it as APP_NAME for this specific repository)
             # --------------------------------------------------
+            export REPO_NAME="${repo}"
+
             python3 - <<'PY'
           import os
           import yaml
           import re
 
-          template_file = "input_files/application_template.yaml"
-          values_file = "input_files/helm_data.yaml"
+          config_file = "input_files/app_config.yaml"
 
-          with open(template_file, "r") as f:
-              template_data = yaml.safe_load(f)
-
-          with open(values_file, "r") as f:
-              values = yaml.safe_load(f)
+          with open(config_file, "r") as f:
+              config = yaml.safe_load(f)
 
           # --------------------------------------------------
-          # Validate template structure
+          # Validate structure
           # --------------------------------------------------
-          if not isinstance(template_data, dict):
+          if not isinstance(config, dict):
               raise Exception(
-                  "application_template.yaml must contain a YAML mapping."
+                  "app_config.yaml must contain a YAML mapping."
               )
 
-          if "files" not in template_data:
+          if "values" not in config or not isinstance(config["values"], dict):
               raise Exception(
-                  "application_template.yaml must contain a 'files' list"
+                  "app_config.yaml must contain a 'values' mapping."
               )
 
-          if not isinstance(template_data["files"], list):
+          if "files" not in config or not isinstance(config["files"], list):
               raise Exception(
-                  "'files' in application_template.yaml must be a list"
+                  "app_config.yaml must contain a 'files' list."
               )
 
+          values = config["values"]
+          files = config["files"]
+
           # --------------------------------------------------
-          # Validate values structure
+          # APP_NAME comes from the repository name passed in the
+          # "repo_names" workflow input, NOT from app_config.yaml.
+          # This guarantees each generated repo gets its own
+          # correctly-named app, package, and Helm chart.
           # --------------------------------------------------
-          if not isinstance(values, dict):
-              raise Exception(
-                  "helm_data.yaml must contain key/value pairs."
-              )
+          values["APP_NAME"] = os.environ["REPO_NAME"]
+
+          # --------------------------------------------------
+          # Derive Java-safe package/class names from APP_NAME,
+          # since Java identifiers cannot contain hyphens.
+          # e.g. APP_NAME "application-three" ->
+          #   JAVA_CLASS_NAME   = ApplicationThreeApplication
+          #   JAVA_PACKAGE      = com.example.applicationthree
+          #   JAVA_PACKAGE_PATH = com/example/applicationthree
+          # --------------------------------------------------
+          app_name = str(values["APP_NAME"])
+          parts = [p for p in re.split(r"[-_]", app_name) if p]
+
+          values["JAVA_CLASS_NAME"] = "".join(p.capitalize() for p in parts) + "Application"
+          values["JAVA_PACKAGE"] = "com.example." + "".join(p.lower() for p in parts)
+          values["JAVA_PACKAGE_PATH"] = "com/example/" + "".join(p.lower() for p in parts)
 
           # --------------------------------------------------
           # Replace variables
@@ -279,7 +309,7 @@ jobs:
 
                   if key not in values:
                       raise Exception(
-                          f"Variable '{key}' is not defined in helm_data.yaml"
+                          f"Variable '{key}' is not defined in app_config.yaml values"
                       )
 
                   return str(values[key])
@@ -289,7 +319,7 @@ jobs:
           # --------------------------------------------------
           # Generate files
           # --------------------------------------------------
-          for item in template_data["files"]:
+          for item in files:
 
               if not isinstance(item, dict):
                   raise Exception(
