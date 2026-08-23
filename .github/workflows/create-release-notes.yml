@@ -68,7 +68,7 @@ jobs:
           echo "GitHub authentication token configured successfully."
 
       # =========================================================
-      # 4. Generate Release Branch Name
+      # 4. Generate Release Branch
       # =========================================================
       - name: Generate Release Branch Name
         shell: bash
@@ -136,7 +136,6 @@ jobs:
               echo "❌ Unable to find release branch."
 
               RELEASE_RESULTS["${REPO}"]="failed"
-
               FAILED=$((FAILED + 1))
 
               continue
@@ -146,28 +145,23 @@ jobs:
 
             echo "Full Commit ID  : ${NEW_COMMIT}"
             echo "Short Commit ID : ${SHORT_COMMIT}"
-            echo ""
 
             # =====================================================
-            # 5.2 Generate release tag
+            # 5.2 Create release tag
             # =====================================================
 
             NEW_TAG="${RELEASE_VERSION}-release-${SHORT_COMMIT}"
 
+            echo ""
             echo "New Release Tag:"
             echo "${NEW_TAG}"
             echo ""
-
-            # =====================================================
-            # 5.3 Check if tag already exists
-            # =====================================================
 
             if gh api \
               "repos/${ORGANIZATION}/${REPO}/git/ref/tags/${NEW_TAG}" \
               > /dev/null 2>&1; then
 
-              echo "Tag already exists:"
-              echo "${NEW_TAG}"
+              echo "Tag already exists."
 
             else
 
@@ -184,23 +178,25 @@ jobs:
             fi
 
             # =====================================================
-            # 5.4 Find previous published release tag
+            # 5.3 Find previous published release
             # =====================================================
 
             echo ""
-            echo "Finding previous release tag..."
+            echo "Finding previous published release..."
 
             OLD_TAG=""
 
             OLD_TAG=$(gh release list \
               --repo "${ORGANIZATION}/${REPO}" \
-              --limit 1 \
+              --limit 20 \
               --exclude-drafts \
               --exclude-pre-releases \
               --json tagName \
-              --jq '.[0].tagName' 2>/dev/null || true)
+              --jq '.[].tagName' \
+              | grep -v "^${NEW_TAG}$" \
+              | head -n 1 || true)
 
-            if [[ -n "${OLD_TAG}" && "${OLD_TAG}" != "null" ]]; then
+            if [[ -n "${OLD_TAG}" ]]; then
 
               echo "Previous Release Tag:"
               echo "${OLD_TAG}"
@@ -208,14 +204,49 @@ jobs:
             else
 
               echo "No previous published release found."
-              echo "This will be treated as the first release."
-
-              OLD_TAG=""
 
             fi
 
             # =====================================================
-            # 5.5 Generate GitHub Release Notes
+            # 5.4 Compare previous tag with new tag
+            # =====================================================
+
+            echo ""
+            echo "Comparing release tags..."
+
+            if [[ -n "${OLD_TAG}" ]]; then
+
+              COMPARE_DATA=$(gh api \
+                "repos/${ORGANIZATION}/${REPO}/compare/${OLD_TAG}...${NEW_TAG}")
+
+              COMMITS=$(echo "${COMPARE_DATA}" | jq -r '
+                .commits[] |
+                "- `" + (.sha[0:7]) + "` " + .commit.message
+              ')
+
+              CHANGED_FILES=$(echo "${COMPARE_DATA}" | jq -r '
+                .files[] |
+                "- `" + .filename + "` (" + .status + ")"
+              ')
+
+              TOTAL_COMMITS=$(echo "${COMPARE_DATA}" | jq '.commits | length')
+
+              TOTAL_FILES=$(echo "${COMPARE_DATA}" | jq '.files | length')
+
+              echo "Commits Changed : ${TOTAL_COMMITS}"
+              echo "Files Changed   : ${TOTAL_FILES}"
+
+            else
+
+              COMMITS="No previous release available for comparison."
+              CHANGED_FILES="No previous release available for comparison."
+              TOTAL_COMMITS=0
+              TOTAL_FILES=0
+
+            fi
+
+            # =====================================================
+            # 5.5 Generate GitHub's automatic release notes
             # =====================================================
 
             echo ""
@@ -223,7 +254,7 @@ jobs:
 
             if [[ -n "${OLD_TAG}" ]]; then
 
-              RELEASE_NOTES=$(gh api \
+              AUTO_NOTES=$(gh api \
                 --method POST \
                 "repos/${ORGANIZATION}/${REPO}/releases/generate-notes" \
                 -f "tag_name=${NEW_TAG}" \
@@ -232,7 +263,7 @@ jobs:
 
             else
 
-              RELEASE_NOTES=$(gh api \
+              AUTO_NOTES=$(gh api \
                 --method POST \
                 "repos/${ORGANIZATION}/${REPO}/releases/generate-notes" \
                 -f "tag_name=${NEW_TAG}" \
@@ -240,10 +271,46 @@ jobs:
 
             fi
 
-            echo "✅ Release notes generated."
+            echo "✅ GitHub release notes generated."
 
             # =====================================================
-            # 5.6 Create GitHub Release
+            # 5.6 Build complete release notes
+            # =====================================================
+
+            RELEASE_NOTES=$(cat <<EOF
+## What's Changed
+
+${AUTO_NOTES}
+
+---
+
+## 📋 Release Comparison
+
+| Field | Value |
+|---|---|
+| Previous Release | \`${OLD_TAG:-First Release}\` |
+| New Release | \`${NEW_TAG}\` |
+| Release Branch | \`${RELEASE_BRANCH}\` |
+| Release Commit | \`${SHORT_COMMIT}\` |
+| Commits Changed | ${TOTAL_COMMITS} |
+| Files Changed | ${TOTAL_FILES} |
+
+## 📝 Commits
+
+${COMMITS}
+
+## 📂 Changed Files
+
+${CHANGED_FILES}
+
+---
+
+**Full Changelog:** https://github.com/${ORGANIZATION}/${REPO}/compare/${OLD_TAG}...${NEW_TAG}
+EOF
+)
+
+            # =====================================================
+            # 5.7 Create GitHub Release
             # =====================================================
 
             echo ""
@@ -263,11 +330,10 @@ jobs:
             echo ""
             echo "✅ Release published successfully"
             echo ""
-            echo "Repository       : ${REPO}"
-            echo "Release Version  : ${RELEASE_VERSION}"
-            echo "Previous Tag     : ${OLD_TAG:-"(first release)"}"
-            echo "New Tag          : ${NEW_TAG}"
-            echo "Release URL      : ${RELEASE_URL}"
+            echo "Repository      : ${REPO}"
+            echo "Previous Tag    : ${OLD_TAG:-"(first release)"}"
+            echo "New Tag         : ${NEW_TAG}"
+            echo "Release URL     : ${RELEASE_URL}"
 
             RELEASE_RESULTS["${REPO}"]="success"
             RELEASE_TAGS["${REPO}"]="${NEW_TAG}"
@@ -279,7 +345,7 @@ jobs:
           done
 
           # =======================================================
-          # Store results for summary
+          # Store results
           # =======================================================
 
           echo "RELEASE_RESULTS<<EOF" >> "$GITHUB_ENV"
@@ -315,7 +381,7 @@ jobs:
           echo "EOF" >> "$GITHUB_ENV"
 
           # =======================================================
-          # Overall result
+          # Overall Result
           # =======================================================
 
           echo ""
@@ -454,13 +520,15 @@ jobs:
 
           \`Release Branch\`
           ↓
-          \`Get Branch Commit\`
+          \`Get Release Branch Commit\`
           ↓
-          \`Create Version-Release-ShortCommit Tag\`
+          \`Create Release Tag\`
           ↓
-          \`Find Previous Published Release Tag\`
+          \`Find Previous Release Tag\`
           ↓
-          \`Generate GitHub Release Notes\`
+          \`Compare Previous Tag → New Tag\`
+          ↓
+          \`Generate Release Notes\`
           ↓
           \`Publish GitHub Release\`
 
