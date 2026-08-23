@@ -1,6 +1,6 @@
 # Release Automation
 
-Automates multi-repository release branch creation, version tagging, release note generation, and GitHub Release publishing using GitHub Actions.
+Automates multi-repository release branch creation, version tagging, release note generation, GitHub Release publishing, and new application repository scaffolding using GitHub Actions.
 
 ## Table of Contents
 
@@ -12,6 +12,7 @@ Automates multi-repository release branch creation, version tagging, release not
 - [Getting Started](#getting-started)
 - [Workflows](#workflows)
 - [Release Naming Convention](#release-naming-convention)
+- [Application Repository Configuration](#application-repository-configuration)
 - [Configuration](#configuration)
 - [Release Process Example](#release-process-example)
 - [Failure Handling](#failure-handling)
@@ -22,10 +23,11 @@ Automates multi-repository release branch creation, version tagging, release not
 
 ## About
 
-This repository contains reusable GitHub Actions workflows that automate the release process across multiple application repositories.
+This repository contains reusable GitHub Actions workflows that automate the release process across multiple application repositories, and the creation of new application repositories from a standard template.
 
 The automation handles:
 
+- New application repository creation from a shared template
 - Release branch creation
 - Release branch validation
 - Repository validation
@@ -41,6 +43,10 @@ The automation handles:
 
 ## Features
 
+- Create one or more new application repositories in a single workflow run
+- Generate a standard Spring Boot + Helm project structure for each new repository
+- Derive the application name, Java package, and Java class name automatically from the repository name
+- Refuse to overwrite a repository that already exists
 - Create release branches across multiple application repositories
 - Standardized release branch naming
 - Support for multiple repositories in a single workflow execution
@@ -60,7 +66,25 @@ The automation handles:
 
 ## How It Works
 
-### 1. Create Release Branch
+### 1. Create Application Repository
+
+The application repository workflow receives one or more repository names.
+
+For example:
+
+```text
+Repositories: application-one,application-two
+```
+
+For each name, it:
+
+1. Verifies the repository does not already exist (fails if it does, to avoid overwriting anything).
+2. Creates a new private GitHub repository.
+3. Generates the project files from `input_files/app_config.yaml` — a Spring Boot application skeleton and a matching Helm chart.
+4. Derives `APP_NAME`, the Java package, and the Java class name from the repository name itself, so every repository gets correctly named, compilable Java code.
+5. Commits and pushes the generated files to the new repository's `main` branch.
+
+### 2. Create Release Branch
 
 The release branch workflow receives a release name, version, and application repositories.
 
@@ -80,7 +104,7 @@ release/SG_RELEASE_1.0.0
 
 in each target repository.
 
-### 2. Create and Publish Release Notes
+### 3. Create and Publish Release Notes
 
 The release publishing workflow receives the release identifier and application repositories.
 
@@ -120,13 +144,56 @@ If a required step fails, the workflow fails.
 release-automation/
 ├── .github/
 │   └── workflows/
+│       ├── create-app-repos.yml
 │       ├── create-release-branch.yml
 │       └── publish-release-notes.yml
+├── input_files/
+│   └── app_config.yaml
 ├── README.md
 └── LICENSE
 ```
 
 ## Workflows
+
+### Create Application Repository
+
+Workflow:
+
+[create-app-repos.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-app-repos.yml)
+
+Purpose:
+
+Creates one or more new application repositories from a shared template, and generates a Spring Boot project with a matching Helm chart in each.
+
+Trigger:
+
+```yaml
+workflow_dispatch
+```
+
+Inputs:
+
+| Input | Required | Example | Description |
+|---|---|---|---|
+| `repo_names` | Yes | `application-one,application-two` | Comma-separated repository names to create |
+| `description` | No | `Application repository` | Description applied to each created repository |
+
+Example:
+
+```text
+repo_names  = application-three
+description = Billing service
+```
+
+Result:
+
+A new private repository named `application-three` is created, containing a generated Spring Boot application (package `com.example.applicationthree`, class `ApplicationThreeApplication`) and a Helm chart at `helm/application-three/`.
+
+Notes:
+
+- The workflow fails without creating anything if a target repository already exists, to avoid overwriting it.
+- `APP_NAME` is never read from configuration — it is always taken from the repository name being created, so every repository in a multi-repository run gets its own correct name, Java package, and Helm chart, even though they share the same `app_config.yaml`.
+- `input_files/app_config.yaml` is staged to a temporary location before the loop starts, since each repository's working directory is wiped and rebuilt during generation.
 
 ### Create Release Branches
 
@@ -412,6 +479,58 @@ and that tag points to the commit at:
 release/SG_RELEASE_1.0.0
 ```
 
+## Application Repository Configuration
+
+New application repositories are generated from a single file:
+
+```text
+input_files/app_config.yaml
+```
+
+The file has two top-level sections:
+
+```yaml
+values:
+  IMAGE_REPOSITORY: my-registry/my-image
+  IMAGE_TAG: "1.0.0"
+  DEV_REPLICA_COUNT: 1
+  UAT_REPLICA_COUNT: 2
+  PROD_REPLICA_COUNT: 3
+  CONTAINER_PORT: 8080
+  SERVICE_PORT: 80
+  SERVICE_TYPE: ClusterIP
+  INGRESS_ENABLED: true
+  INGRESS_HOST: my-app.example.com
+  HPA_ENABLED: true
+  HPA_MIN_REPLICAS: 2
+  HPA_MAX_REPLICAS: 5
+  HPA_CPU_TARGET: 70
+
+files:
+  - path: "pom.xml"
+    content: |
+      ...
+```
+
+- **`values`** — settings shared by every repository created in a run (image, ports, replica counts, ingress, HPA). `APP_NAME` is intentionally not set here; it is injected automatically from the repository name being created.
+- **`files`** — the template. Each entry's `path` and `content` may reference any key from `values` using `${KEY_NAME}` placeholders, plus three keys the workflow derives automatically:
+
+| Placeholder | Derived from `APP_NAME` (repository name) | Example (`billing-service`) |
+|---|---|---|
+| `${JAVA_PACKAGE}` | dots, no hyphens | `com.example.billingservice` |
+| `${JAVA_PACKAGE_PATH}` | same, as a folder path | `com/example/billingservice` |
+| `${JAVA_CLASS_NAME}` | PascalCase + `Application` suffix | `BillingServiceApplication` |
+
+This derivation exists because Java package and class names cannot contain hyphens, while repository, Helm chart, and Maven artifact names commonly do.
+
+The generated repository includes:
+
+- A Spring Boot application skeleton (`src/main/java`, `src/main/resources`, `src/test/java`)
+- Environment-specific Spring profiles (`application-dev.yml`, `application-uat.yml`, `application-prod.yml`)
+- `Dockerfile` and `.dockerignore`
+- `pom.xml`
+- A Helm chart under `helm/<repo-name>/`, with per-environment values files (`values-dev.yaml`, `values-uat.yaml`, `values-prod.yaml`) and templates for Deployment, Service, Ingress, HPA, ConfigMap, and `.helmignore`
+
 ## Configuration
 
 ### Required Secret
@@ -439,7 +558,7 @@ Create:
 RELEASE_AUTOMATION_TOKEN
 ```
 
-The token must have access to all target application repositories and the permissions required by the workflows.
+The token must have access to all target application repositories, permission to create new repositories under the organization/owner, and the permissions required by the workflows.
 
 Do not hard-code the token in a YAML file.
 
@@ -450,6 +569,23 @@ Assume the application repository is:
 ```text
 saghosh8/application-two
 ```
+
+### Step 0 — Create the application repository (once, when the app is new)
+
+Run:
+
+```text
+Create Application Repository
+```
+
+Inputs:
+
+```text
+repo_names:  application-two
+description: Application repository
+```
+
+The workflow creates `saghosh8/application-two` with a generated Spring Boot + Helm project.
 
 ### Step 1 — Create the release branch
 
@@ -532,7 +668,7 @@ The GitHub Release is published using:
 
 ## Multi-Repository Example
 
-Multiple repositories can be supplied:
+Multiple repositories can be supplied to either the creation, release branch, or release publishing workflows:
 
 ```text
 application-one,application-two,application-three
@@ -540,7 +676,7 @@ application-one,application-two,application-three
 
 Each repository is processed independently.
 
-Example:
+Example (release branch and publish flow):
 
 ```text
 application-one
@@ -582,6 +718,8 @@ set -euo pipefail
 
 The workflow fails for conditions such as:
 
+- Target application repository already exists (repository creation workflow)
+- `app_config.yaml` is missing, malformed, or missing a required value
 - Repository does not exist
 - Repository cannot be accessed
 - Release branch does not exist
@@ -608,8 +746,17 @@ Errors identify the affected repository and branch/tag where possible.
 - Rotate tokens periodically.
 - Keep application `main` branches protected.
 - Do not automatically overwrite existing release tags.
+- Do not automatically overwrite an existing application repository.
 
 ## Troubleshooting
+
+### Application Repository Already Exists
+
+The creation workflow refuses to modify an existing repository. Choose a different `repo_names` value, or delete/rename the existing repository first if it was created in error.
+
+### `app_config.yaml` Not Found Mid-Run
+
+If this occurs partway through a multi-repository creation run, confirm the "Stage input files" step ran before the repository loop and that `input_files/app_config.yaml` exists in the automation repository at the commit being run.
 
 ### Repository Not Found
 
@@ -649,6 +796,10 @@ Verify the existing GitHub Release before rerunning the workflow.
 The workflow should not create duplicate releases.
 
 ## Workflow URLs
+
+### Create Application Repository
+
+https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-app-repos.yml
 
 ### Create Release Branches
 
@@ -696,6 +847,10 @@ See the `LICENSE` file for details.
 ## Release Flow Summary
 
 ```text
+Create Application Repository
+        ↓
+New repo: application-two
+        ↓
 Create Release Branch
         ↓
 release/SG_RELEASE_1.0.0
