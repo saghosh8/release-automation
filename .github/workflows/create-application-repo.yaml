@@ -220,7 +220,7 @@ jobs:
           EOF
 
       # --------------------------------------------------
-      # Create Maven files
+      # Create Maven configuration
       # --------------------------------------------------
       - name: Create Maven configuration
         shell: bash
@@ -277,7 +277,7 @@ jobs:
           EOF
 
       # --------------------------------------------------
-      # Create config files
+      # Create configuration files
       # --------------------------------------------------
       - name: Create configuration files
         shell: bash
@@ -553,32 +553,37 @@ jobs:
           OWNER="${GITHUB_REPOSITORY_OWNER}"
           REPO="${{ inputs.repo_name }}"
 
-          echo "Preparing new repository ${OWNER}/${REPO}"
+          echo "Preparing ${OWNER}/${REPO}"
 
           # Remove automation repository Git metadata
           rm -rf .git
 
+          # IMPORTANT:
+          # Do not copy the automation workflow into the new repo.
+          # Otherwise GitHub requires the PAT to have workflow scope.
+          rm -rf .github
+
           # Initialize new Git repository
           git init
 
-          # Set main as default branch
+          # Set main branch
           git branch -M main
 
           # Configure Git
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Add all generated files
+          # Add generated application files
           git add .
 
           # Create initial commit
           git commit -m "Initial application structure"
 
-          # Add newly created repository as origin
+          # Add new repository
           git remote add origin \
             "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git"
 
-          # Push to GitHub
+          # Push main
           git push -u origin main
 
           echo "Application repository created successfully."
