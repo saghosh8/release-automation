@@ -172,6 +172,19 @@ jobs:
           done
 
       # --------------------------------------------------
+      # Preserve input files outside the per-repo working
+      # directory. The loop below wipes the working directory
+      # for every repository it creates, so input_files must
+      # live somewhere that survives across iterations.
+      # --------------------------------------------------
+      - name: Stage input files
+        shell: bash
+        run: |
+          set -e
+          cp -r input_files "${RUNNER_TEMP}/input_files"
+          echo "Staged config at ${RUNNER_TEMP}/input_files"
+
+      # --------------------------------------------------
       # Create repositories
       # --------------------------------------------------
       - name: Create repositories
@@ -187,6 +200,7 @@ jobs:
           fi
 
           OWNER="${GITHUB_REPOSITORY_OWNER}"
+          CONFIG_FILE="${RUNNER_TEMP}/input_files/app_config.yaml"
 
           IFS=',' read -ra REPOS <<< "${{ inputs.repo_names }}"
 
@@ -221,28 +235,25 @@ jobs:
             echo "Repository created."
 
             # --------------------------------------------------
-            # Clean workspace
+            # Clean workspace (nothing needs to survive in-place
+            # anymore — input_files lives in RUNNER_TEMP now)
             # --------------------------------------------------
-            rm -rf .git
-            rm -rf .github
-
-            find . -mindepth 1 -maxdepth 1 \
-              ! -name 'input_files' \
-              -exec rm -rf {} +
+            find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
             # --------------------------------------------------
             # Generate files from app_config.yaml
-            # (REPO_NAME is exported so python can read it via os.environ
-            #  and use it as APP_NAME for this specific repository)
+            # (REPO_NAME/CONFIG_FILE are exported so python can
+            #  read them via os.environ)
             # --------------------------------------------------
             export REPO_NAME="${repo}"
+            export CONFIG_FILE="${CONFIG_FILE}"
 
             python3 - <<'PY'
           import os
           import yaml
           import re
 
-          config_file = "input_files/app_config.yaml"
+          config_file = os.environ["CONFIG_FILE"]
 
           with open(config_file, "r") as f:
               config = yaml.safe_load(f)
@@ -374,11 +385,6 @@ jobs:
               print(f"Created: {path}")
 
           PY
-
-            # --------------------------------------------------
-            # Remove input files from generated repository
-            # --------------------------------------------------
-            rm -rf input_files
 
             # --------------------------------------------------
             # Initialize new Git repository
