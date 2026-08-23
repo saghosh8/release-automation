@@ -1,4 +1,4 @@
-# release-automation
+# Release Automation
 
 Automates multi-repository release branch creation and release note / GitHub Release generation using GitHub Actions.
 
