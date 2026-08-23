@@ -431,7 +431,7 @@ jobs:
             gh release create "$NEW_TAG" \
               --repo "$REPO_FULL_NAME" \
               --target "$BRANCH_SHA" \
-              --title "$VERSION Release" \
+              --title "$NEW_TAG" \
               --generate-notes \
               --notes-start-tag "$PREVIOUS_TAG" \
               --verify-tag
