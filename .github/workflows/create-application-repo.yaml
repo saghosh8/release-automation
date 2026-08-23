@@ -596,7 +596,7 @@ jobs:
 
           git commit -m "Initial application structure"
 
-          git remote add origin \
+          git remote set-url origin \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/${{ inputs.repo_name }}.git"
 
           git push -u origin main
