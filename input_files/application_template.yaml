@@ -1,0 +1,271 @@
+files:
+
+  - path: "src/main/java/com/example/application-name/ApplicationNameApplication.java"
+    content: |
+      package com.example.application-name;
+
+      import org.springframework.boot.SpringApplication;
+      import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+      @SpringBootApplication
+      public class ApplicationNameApplication {
+
+          public static void main(String[] args) {
+              SpringApplication.run(ApplicationNameApplication.class, args);
+          }
+      }
+
+  - path: "src/main/java/com/example/application-name/controller/HealthController.java"
+    content: |
+      package com.example.application-name.controller;
+
+      import org.springframework.web.bind.annotation.GetMapping;
+      import org.springframework.web.bind.annotation.RestController;
+
+      @RestController
+      public class HealthController {
+
+          @GetMapping("/health")
+          public String health() {
+              return "UP";
+          }
+      }
+
+  - path: "src/main/resources/application.yml"
+    content: |
+      server:
+        port: ${CONTAINER_PORT}
+
+      spring:
+        application:
+          name: ${APP_NAME}
+
+  - path: "src/test/java/com/example/application-name/ApplicationNameApplicationTests.java"
+    content: |
+      package com.example.application-name;
+
+      import org.junit.jupiter.api.Test;
+
+      class ApplicationNameApplicationTests {
+
+          @Test
+          void contextLoads() {
+          }
+      }
+
+  - path: "pom.xml"
+    content: |
+      <?xml version="1.0" encoding="UTF-8"?>
+      <project xmlns="http://maven.apache.org/POM/4.0.0"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+          <modelVersion>4.0.0</modelVersion>
+
+          <parent>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-parent</artifactId>
+              <version>3.3.0</version>
+              <relativePath/>
+          </parent>
+
+          <groupId>com.example</groupId>
+          <artifactId>${APP_NAME}</artifactId>
+          <version>0.0.1-SNAPSHOT</version>
+
+          <properties>
+              <java.version>17</java.version>
+          </properties>
+
+          <dependencies>
+              <dependency>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-starter-web</artifactId>
+              </dependency>
+
+              <dependency>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-starter-test</artifactId>
+                  <scope>test</scope>
+              </dependency>
+          </dependencies>
+
+          <build>
+              <plugins>
+                  <plugin>
+                      <groupId>org.springframework.boot</groupId>
+                      <artifactId>spring-boot-maven-plugin</artifactId>
+                  </plugin>
+              </plugins>
+          </build>
+
+      </project>
+
+  - path: "README.md"
+    content: |
+      # ${APP_NAME}
+
+      Application repository generated automatically.
+
+  - path: ".gitignore"
+    content: |
+      target/
+      .idea/
+      *.iml
+      .DS_Store
+
+  - path: "helm/${APP_NAME}/Chart.yaml"
+    content: |
+      apiVersion: v2
+      name: ${APP_NAME}
+      description: Helm chart for ${APP_NAME}
+      type: application
+      version: 0.1.0
+      appVersion: "${IMAGE_TAG}"
+
+  - path: "helm/${APP_NAME}/values.yaml"
+    content: |
+      replicaCount: ${DEV_REPLICA_COUNT}
+
+      image:
+        repository: ${IMAGE_REPOSITORY}
+        tag: "${IMAGE_TAG}"
+        pullPolicy: IfNotPresent
+
+      service:
+        type: ${SERVICE_TYPE}
+        port: ${SERVICE_PORT}
+
+      containerPort: ${CONTAINER_PORT}
+
+      ingress:
+        enabled: ${INGRESS_ENABLED}
+        host: ${INGRESS_HOST}
+
+      hpa:
+        enabled: ${HPA_ENABLED}
+        minReplicas: ${HPA_MIN_REPLICAS}
+        maxReplicas: ${HPA_MAX_REPLICAS}
+        cpuTarget: ${HPA_CPU_TARGET}
+
+  - path: "helm/${APP_NAME}/values-dev.yaml"
+    content: |
+      replicaCount: ${DEV_REPLICA_COUNT}
+
+  - path: "helm/${APP_NAME}/values-uat.yaml"
+    content: |
+      replicaCount: ${UAT_REPLICA_COUNT}
+
+  - path: "helm/${APP_NAME}/values-prod.yaml"
+    content: |
+      replicaCount: ${PROD_REPLICA_COUNT}
+
+  - path: "helm/${APP_NAME}/templates/_helpers.tpl"
+    content: |
+      {{- define "${APP_NAME}.name" -}}
+      ${APP_NAME}
+      {{- end }}
+
+      {{- define "${APP_NAME}.fullname" -}}
+      {{ .Release.Name }}-${APP_NAME}
+      {{- end }}
+
+  - path: "helm/${APP_NAME}/templates/deployment.yaml"
+    content: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: {{ include "${APP_NAME}.fullname" . }}
+      spec:
+        replicas: {{ .Values.replicaCount }}
+        selector:
+          matchLabels:
+            app: {{ include "${APP_NAME}.name" . }}
+        template:
+          metadata:
+            labels:
+              app: {{ include "${APP_NAME}.name" . }}
+          spec:
+            containers:
+              - name: ${APP_NAME}
+                image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+                imagePullPolicy: {{ .Values.image.pullPolicy }}
+                ports:
+                  - containerPort: {{ .Values.containerPort }}
+
+  - path: "helm/${APP_NAME}/templates/service.yaml"
+    content: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: {{ include "${APP_NAME}.fullname" . }}
+      spec:
+        type: {{ .Values.service.type }}
+        selector:
+          app: {{ include "${APP_NAME}.name" . }}
+        ports:
+          - port: {{ .Values.service.port }}
+            targetPort: {{ .Values.containerPort }}
+
+  - path: "helm/${APP_NAME}/templates/ingress.yaml"
+    content: |
+      {{- if .Values.ingress.enabled }}
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: {{ include "${APP_NAME}.fullname" . }}
+      spec:
+        rules:
+          - host: {{ .Values.ingress.host }}
+            http:
+              paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: {{ include "${APP_NAME}.fullname" . }}
+                      port:
+                        number: {{ .Values.service.port }}
+      {{- end }}
+
+  - path: "helm/${APP_NAME}/templates/configmap.yaml"
+    content: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: ${APP_NAME}-config
+      data:
+        APP_NAME: "${APP_NAME}"
+
+  - path: "helm/${APP_NAME}/templates/hpa.yaml"
+    content: |
+      {{- if .Values.hpa.enabled }}
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: ${APP_NAME}
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: {{ include "${APP_NAME}.fullname" . }}
+        minReplicas: {{ .Values.hpa.minReplicas }}
+        maxReplicas: {{ .Values.hpa.maxReplicas }}
+        metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: {{ .Values.hpa.cpuTarget }}
+      {{- end }}
+
+  - path: "helm/${APP_NAME}/templates/NOTES.txt"
+    content: |
+      ${APP_NAME} has been deployed.
+
+      Application:
+        ${APP_NAME}
+
+      Image:
+        ${IMAGE_REPOSITORY}:${IMAGE_TAG}
