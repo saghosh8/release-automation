@@ -75,6 +75,17 @@ jobs:
           with open(file, "r") as f:
               data = yaml.safe_load(f)
 
+          # --------------------------------------------------
+          # Make sure helm_data.yaml contains a YAML mapping
+          # --------------------------------------------------
+          if not isinstance(data, dict):
+              print("ERROR: helm_data.yaml must contain key/value pairs.")
+              print("Expected format:")
+              print("APP_NAME: my-app")
+              print("IMAGE_REPOSITORY: my-image")
+              print("IMAGE_TAG: latest")
+              sys.exit(1)
+
           required = [
               "APP_NAME",
               "IMAGE_REPOSITORY",
@@ -93,18 +104,22 @@ jobs:
               "HPA_CPU_TARGET"
           ]
 
-          missing = [
-              key
-              for key in required
-              if key not in data
-              or data[key] is None
-              or str(data[key]).strip() == ""
-          ]
+          missing = []
+
+          for key in required:
+              if key not in data:
+                  missing.append(key)
+              elif data[key] is None:
+                  missing.append(key)
+              elif str(data[key]).strip() == "":
+                  missing.append(key)
 
           if missing:
               print("ERROR: Missing values:")
+
               for key in missing:
                   print(f"  - {key}")
+
               sys.exit(1)
 
           print("helm_data.yaml validation successful.")
@@ -220,12 +235,37 @@ jobs:
           with open(values_file, "r") as f:
               values = yaml.safe_load(f)
 
-          if not template_data or "files" not in template_data:
+          # --------------------------------------------------
+          # Validate template structure
+          # --------------------------------------------------
+          if not isinstance(template_data, dict):
+              raise Exception(
+                  "application_template.yaml must contain a YAML mapping."
+              )
+
+          if "files" not in template_data:
               raise Exception(
                   "application_template.yaml must contain a 'files' list"
               )
 
+          if not isinstance(template_data["files"], list):
+              raise Exception(
+                  "'files' in application_template.yaml must be a list"
+              )
+
+          # --------------------------------------------------
+          # Validate values structure
+          # --------------------------------------------------
+          if not isinstance(values, dict):
+              raise Exception(
+                  "helm_data.yaml must contain key/value pairs."
+              )
+
+          # --------------------------------------------------
+          # Replace variables
+          # --------------------------------------------------
           def replace_variables(value):
+
               if not isinstance(value, str):
                   return value
 
@@ -234,6 +274,7 @@ jobs:
               )
 
               def replace(match):
+
                   key = match.group(1)
 
                   if key not in values:
@@ -245,7 +286,15 @@ jobs:
 
               return pattern.sub(replace, value)
 
+          # --------------------------------------------------
+          # Generate files
+          # --------------------------------------------------
           for item in template_data["files"]:
+
+              if not isinstance(item, dict):
+                  raise Exception(
+                      "Every item in 'files' must be a YAML mapping."
+                  )
 
               if "path" not in item:
                   raise Exception(
@@ -260,13 +309,17 @@ jobs:
               path = replace_variables(item["path"])
               content = replace_variables(item["content"])
 
+              # --------------------------------------------------
               # Prevent accidental absolute paths
+              # --------------------------------------------------
               if os.path.isabs(path):
                   raise Exception(
                       f"Absolute paths are not allowed: {path}"
                   )
 
+              # --------------------------------------------------
               # Prevent path traversal
+              # --------------------------------------------------
               normalized = os.path.normpath(path)
 
               if normalized.startswith("../") or normalized == "..":
@@ -274,15 +327,22 @@ jobs:
                       f"Path traversal is not allowed: {path}"
                   )
 
+              # --------------------------------------------------
+              # Create directory
+              # --------------------------------------------------
               os.makedirs(
                   os.path.dirname(path) or ".",
                   exist_ok=True
               )
 
+              # --------------------------------------------------
+              # Write file
+              # --------------------------------------------------
               with open(path, "w") as f:
                   f.write(content)
 
               print(f"Created: {path}")
+
           PY
 
             # --------------------------------------------------
