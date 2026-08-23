@@ -78,7 +78,7 @@ jobs:
       # --------------------------------------------------
       - name: Check if repository exists
         env:
-          GH_TOKEN: ${{ secrets.ORG_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         shell: bash
         run: |
           set -e
@@ -102,7 +102,7 @@ jobs:
       # --------------------------------------------------
       - name: Create repository
         env:
-          GH_TOKEN: ${{ secrets.ORG_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         shell: bash
         run: |
           set -e
@@ -153,8 +153,6 @@ jobs:
         run: |
           set -e
 
-          PACKAGE_NAME=$(echo "${APP_NAME}" | tr '-' '.')
-
           CLASS_NAME=$(echo "${APP_NAME}" | sed \
             -E 's/(^|-)([a-z])/\U\2/g')
 
@@ -164,9 +162,7 @@ jobs:
             "src/test/java/com/example/${APP_NAME}" \
             "config"
 
-          # ----------------------------------------------
           # Application class
-          # ----------------------------------------------
           cat > "src/main/java/com/example/${APP_NAME}/${CLASS_NAME}Application.java" <<EOF
           package com.example.${APP_NAME};
 
@@ -182,9 +178,7 @@ jobs:
           }
           EOF
 
-          # ----------------------------------------------
           # Health controller
-          # ----------------------------------------------
           cat > "src/main/java/com/example/${APP_NAME}/controller/HealthController.java" <<EOF
           package com.example.${APP_NAME}.controller;
 
@@ -201,9 +195,7 @@ jobs:
           }
           EOF
 
-          # ----------------------------------------------
           # application.yml
-          # ----------------------------------------------
           cat > src/main/resources/application.yml <<EOF
           server:
             port: ${CONTAINER_PORT}
@@ -213,9 +205,7 @@ jobs:
               name: ${APP_NAME}
           EOF
 
-          # ----------------------------------------------
           # Test
-          # ----------------------------------------------
           cat > "src/test/java/com/example/${APP_NAME}/${CLASS_NAME}ApplicationTests.java" <<EOF
           package com.example.${APP_NAME};
 
@@ -230,7 +220,7 @@ jobs:
           EOF
 
       # --------------------------------------------------
-      # Create Maven files
+      # Create Maven configuration
       # --------------------------------------------------
       - name: Create Maven configuration
         shell: bash
@@ -287,7 +277,7 @@ jobs:
           EOF
 
       # --------------------------------------------------
-      # Create config files
+      # Create configuration files
       # --------------------------------------------------
       - name: Create configuration files
         shell: bash
@@ -330,9 +320,7 @@ jobs:
 
           mkdir -p "${HELM_DIR}/templates"
 
-          # ----------------------------------------------
           # Chart.yaml
-          # ----------------------------------------------
           cat > "${HELM_DIR}/Chart.yaml" <<EOF
           apiVersion: v2
           name: ${APP_NAME}
@@ -342,9 +330,7 @@ jobs:
           appVersion: "${IMAGE_TAG}"
           EOF
 
-          # ----------------------------------------------
           # .helmignore
-          # ----------------------------------------------
           cat > "${HELM_DIR}/.helmignore" <<EOF
           .DS_Store
           .git/
@@ -352,9 +338,7 @@ jobs:
           README.md
           EOF
 
-          # ----------------------------------------------
           # values.yaml
-          # ----------------------------------------------
           cat > "${HELM_DIR}/values.yaml" <<EOF
           replicaCount: ${DEV_REPLICA_COUNT}
 
@@ -380,30 +364,22 @@ jobs:
             cpuTarget: ${HPA_CPU_TARGET}
           EOF
 
-          # ----------------------------------------------
           # DEV
-          # ----------------------------------------------
           cat > "${HELM_DIR}/values-dev.yaml" <<EOF
           replicaCount: ${DEV_REPLICA_COUNT}
           EOF
 
-          # ----------------------------------------------
           # UAT
-          # ----------------------------------------------
           cat > "${HELM_DIR}/values-uat.yaml" <<EOF
           replicaCount: ${UAT_REPLICA_COUNT}
           EOF
 
-          # ----------------------------------------------
           # PROD
-          # ----------------------------------------------
           cat > "${HELM_DIR}/values-prod.yaml" <<EOF
           replicaCount: ${PROD_REPLICA_COUNT}
           EOF
 
-          # ----------------------------------------------
           # Helpers
-          # ----------------------------------------------
           cat > "${HELM_DIR}/templates/_helpers.tpl" <<EOF
           {{- define "${APP_NAME}.name" -}}
           ${APP_NAME}
@@ -414,9 +390,7 @@ jobs:
           {{- end }}
           EOF
 
-          # ----------------------------------------------
           # Deployment
-          # ----------------------------------------------
           cat > "${HELM_DIR}/templates/deployment.yaml" <<'EOF'
           apiVersion: apps/v1
           kind: Deployment
@@ -443,9 +417,7 @@ jobs:
           sed -i "s/APP_NAME_PLACEHOLDER/${APP_NAME}/g" \
             "${HELM_DIR}/templates/deployment.yaml"
 
-          # ----------------------------------------------
           # Service
-          # ----------------------------------------------
           cat > "${HELM_DIR}/templates/service.yaml" <<'EOF'
           apiVersion: v1
           kind: Service
@@ -463,9 +435,7 @@ jobs:
           sed -i "s/APP_NAME_PLACEHOLDER/${APP_NAME}/g" \
             "${HELM_DIR}/templates/service.yaml"
 
-          # ----------------------------------------------
           # Ingress
-          # ----------------------------------------------
           cat > "${HELM_DIR}/templates/ingress.yaml" <<'EOF'
           {{- if .Values.ingress.enabled }}
           apiVersion: networking.k8s.io/v1
@@ -490,9 +460,7 @@ jobs:
           sed -i "s/APP_NAME_PLACEHOLDER/${APP_NAME}/g" \
             "${HELM_DIR}/templates/ingress.yaml"
 
-          # ----------------------------------------------
           # ConfigMap
-          # ----------------------------------------------
           cat > "${HELM_DIR}/templates/configmap.yaml" <<EOF
           apiVersion: v1
           kind: ConfigMap
@@ -502,9 +470,7 @@ jobs:
             APP_NAME: "${APP_NAME}"
           EOF
 
-          # ----------------------------------------------
           # HPA
-          # ----------------------------------------------
           cat > "${HELM_DIR}/templates/hpa.yaml" <<'EOF'
           {{- if .Values.hpa.enabled }}
           apiVersion: autoscaling/v2
@@ -531,9 +497,7 @@ jobs:
           sed -i "s/APP_NAME_PLACEHOLDER/${APP_NAME}/g" \
             "${HELM_DIR}/templates/hpa.yaml"
 
-          # ----------------------------------------------
           # NOTES
-          # ----------------------------------------------
           cat > "${HELM_DIR}/templates/NOTES.txt" <<EOF
           ${APP_NAME} has been deployed.
 
@@ -577,28 +541,49 @@ jobs:
           EOF
 
       # --------------------------------------------------
-      # Push everything
+      # Initialize new repository and push
       # --------------------------------------------------
       - name: Commit and push
         env:
-          GH_TOKEN: ${{ secrets.ORG_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         shell: bash
         run: |
           set -e
 
-          git init
-          git checkout -b main
+          OWNER="${GITHUB_REPOSITORY_OWNER}"
+          REPO="${{ inputs.repo_name }}"
 
+          echo "Preparing ${OWNER}/${REPO}"
+
+          # Remove automation repository Git metadata
+          rm -rf .git
+
+          # IMPORTANT:
+          # Do not copy the automation workflow into the new repo.
+          # Otherwise GitHub requires the PAT to have workflow scope.
+          rm -rf .github
+
+          # Initialize new Git repository
+          git init
+
+          # Set main branch
+          git branch -M main
+
+          # Configure Git
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # Add generated application files
           git add .
 
+          # Create initial commit
           git commit -m "Initial application structure"
 
+          # Add new repository
           git remote add origin \
-            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/${{ inputs.repo_name }}.git"
+            "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/${REPO}.git"
 
+          # Push main
           git push -u origin main
 
           echo "Application repository created successfully."
