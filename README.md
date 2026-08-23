@@ -1,411 +1,726 @@
 # Release Automation
 
-Automates multi-repository release branch creation and release note / GitHub Release generation using GitHub Actions.
+Automates multi-repository release branch creation, version tagging, release note generation, and GitHub Release publishing using GitHub Actions.
 
 ## Table of Contents
-- [About](#about)  
-- [Features](#features)  
-- [How It Works](#how-it-works)  
-- [Project Structure](#project-structure)  
-- [Prerequisites](#prerequisites)  
-- [Getting Started](#getting-started)  
-- [Workflows](#workflows)  
-  - [Create Release Branches](#create-release-branches)  
-  - [Create Release Notes & Publish Releases](#create-release-notes--publish-releases)  
-- [Configuration](#configuration)  
-  - [Workflow Inputs](#workflow-inputs)  
-  - [Required Secrets](#required-secrets)  
-- [Security Considerations](#security-considerations)  
-- [Troubleshooting](#troubleshooting)  
-- [Contributing](#contributing)  
+
+- [About](#about)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Getting Started](#getting-started)
+- [Workflows](#workflows)
+- [Release Naming Convention](#release-naming-convention)
+- [Configuration](#configuration)
+- [Release Process Example](#release-process-example)
+- [Failure Handling](#failure-handling)
+- [Security Considerations](#security-considerations)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## About
 
-This repository contains reusable GitHub Actions workflows designed to streamline the release process across multiple application repositories. It automates:
+This repository contains reusable GitHub Actions workflows that automate the release process across multiple application repositories.
 
-- **Release branch creation** across multiple repositories with consistent naming conventions
-- **Version tagging** with automatic commit hash inclusion
-- **Release notes generation** using GitHub's built-in generator with changelog comparison
-- **GitHub Release publishing** with automated metadata
+The automation handles:
+
+- Release branch creation
+- Release branch validation
+- Repository validation
+- Commit SHA retrieval
+- Release tag creation
+- Existing tag validation
+- Previous release identification
+- Release comparison
+- GitHub Release note generation
+- GitHub Release publishing
+- Release verification
+- Failure handling
 
 ## Features
 
-✅ Create release branches with standardized naming (`release/<name>-<number>`)  
-✅ Generate versioned tags with commit short hash (e.g., `1.0.1-release-abc123f`)  
-✅ Auto-generate release notes comparing against previous releases  
-✅ Publish GitHub Releases across multiple repositories  
-✅ Token validation and security checks  
-✅ Detailed Actions job summary reports for audit and visibility  
-✅ Support for both classic and fine-grained PATs  
+- Create release branches across multiple application repositories
+- Standardized release branch naming
+- Support for multiple repositories in a single workflow execution
+- Validate that repositories exist and are accessible
+- Validate that release branches exist before creating a release
+- Retrieve the exact commit SHA from the release branch
+- Generate release tags containing the release version and short commit SHA
+- Detect existing release tags
+- Prevent an existing tag from pointing to an unexpected commit
+- Identify the previous release tag
+- Compare the previous release against the new release
+- Automatically generate GitHub Release notes
+- Publish GitHub Releases
+- Verify tags and releases
+- Fail the workflow when a required step fails
+- Use `RELEASE_AUTOMATION_TOKEN` for cross-repository access
 
 ## How It Works
 
-### Release Branch Creation Flow
-1. Trigger the **Create Release Branches** workflow via GitHub Actions UI or `gh` CLI
-2. Workflow validates the `RELEASE_AUTOMATION_TOKEN`
-3. For each specified repository:
-   - Clones the repository
-   - Creates a release branch from `main`
-   - Pushes the branch back to the remote
-4. Job summary documents all actions taken
+### 1. Create Release Branch
 
-### Release Publishing Flow
-1. Trigger the **Create Release Notes** workflow
-2. Workflow validates the `RELEASE_AUTOMATION_TOKEN`
-3. For each specified repository:
-   - Locates the corresponding release branch
-   - Creates an annotated tag with versioning and commit hash
-   - Generates release notes (automatically compares with previous tag)
-   - Publishes a GitHub Release
-4. Job summary documents all releases created
+The release branch workflow receives a release name, version, and application repositories.
+
+For example:
+
+```text
+Release name: SG_RELEASE
+Version: 1.0.0
+Repositories: application-one,application-two
+```
+
+It creates:
+
+```text
+release/SG_RELEASE_1.0.0
+```
+
+in each target repository.
+
+### 2. Create and Publish Release Notes
+
+The release publishing workflow receives the release identifier and application repositories.
+
+For:
+
+```text
+SG_RELEASE_1.0.0
+```
+
+the workflow resolves the branch:
+
+```text
+release/SG_RELEASE_1.0.0
+```
+
+It then:
+
+1. Resolves the repository to its full `owner/repository` name.
+2. Verifies that the repository exists and is accessible.
+3. Verifies that the release branch exists.
+4. Gets the exact commit SHA at the HEAD of the release branch.
+5. Gets the short commit SHA.
+6. Builds the release tag.
+7. Checks whether the tag already exists.
+8. Creates the tag if required.
+9. Verifies that an existing tag points to the expected commit.
+10. Identifies the previous release.
+11. Generates release notes from the comparison.
+12. Publishes the GitHub Release.
+13. Verifies the published release.
+
+If a required step fails, the workflow fails.
 
 ## Project Structure
 
-```
+```text
 release-automation/
 ├── .github/
 │   └── workflows/
-│       ├── create-release-branch.yml          # Workflow: Creates release branches
-│       └── publish-release-notes.yml          # Workflow: Creates tags & publishes releases
-├── README.md                                  # This file
-└── LICENSE                                    # MIT License
+│       ├── create-release-branch.yml
+│       └── publish-release-notes.yml
+├── README.md
+└── LICENSE
 ```
-
-### Workflow Files
-
-#### `.github/workflows/create-release-branch.yml`
-Creates release branches across multiple repositories.
-
-**Inputs:**
-- `release_name` — Release identifier (e.g., `SG_RELEASE`)
-- `version` — Semantic version (e.g., `1.0.0`)
-- `app_repos` — Comma-separated repository names
-
-**Process:**
-1. Validates authentication token
-2. Generates release branch name: `release/<release_name>_<version>`
-3. Clones each repository from `main`
-4. Creates and pushes the release branch
-5. Generates job summary with results
-
-#### `.github/workflows/publish-release-notes.yml`
-Creates tags and publishes GitHub Releases with auto-generated notes.
-
-**Inputs:**
-- `release_branch` — Release branch name (e.g., `SG_RELEASE_1.0.0`)
-- `repositories` — Comma-separated repository names
-
-**Process:**
-1. Validates inputs and authentication
-2. Resolves each repository
-3. Verifies release branch exists
-4. Creates versioned tag with commit hash
-5. Finds previous release tag for comparison
-6. Generates and publishes release notes
-7. Verifies release was created
-
-## Prerequisites
-
-### Required
-- **GitHub Organization or Personal Account** with multiple repositories
-- **GitHub Personal Access Token (PAT)** with appropriate permissions
-- **Application repositories** set up with a `main` branch
-- **Previous release tags** (for release notes generation)
-
-### Recommended
-- **Standardized release naming** across teams
-- **Semantic versioning** (e.g., `1.0.0`, `2.3.1`)
-- **Branch protection rules** on `main` branch
-
-## Getting Started
-
-### 1. Create a GitHub Personal Access Token
-
-#### Classic PAT
-1. Go to GitHub → Settings → Developer settings → Personal access tokens
-2. Click "Generate new token (classic)"
-3. Select scopes:
-   - `repo` (full control of private repositories)
-   - `workflow` (Update GitHub Actions workflows)
-4. Copy the token and store it securely
-
-#### Fine-Grained PAT (Recommended)
-1. Go to GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens
-2. Click "Generate new token"
-3. Set **Resource owner** to your organization
-4. Set **Repository access** to "Only select repositories" (select all app repos)
-5. Grant **Repository permissions**:
-   - `Contents` — Read & Write
-   - `Releases` — Read & Write
-   - `Workflows` — Read & Write
-6. Copy the token and store it securely
-
-### 2. Add the Token as a Repository Secret
-
-1. Go to this repository → Settings → Secrets and variables → Actions
-2. Click "New repository secret"
-3. Name: `RELEASE_AUTOMATION_TOKEN`
-4. Value: Paste your PAT
-5. Click "Add secret"
-
-### 3. Trigger the Workflows
-
-#### Create Release Branches
-1. Go to **Actions** tab
-2. Select **Create Release Branches** workflow
-3. Click "Run workflow"
-4. Fill in:
-   - **Release name** (e.g., `SG_RELEASE`)
-   - **Release version** (e.g., `1.0.0`)
-   - **Application repositories** (comma-separated: `repo1,repo2,repo3`)
-5. Click "Run workflow"
-
-#### Create Release Notes & Publish Releases
-1. Go to **Actions** tab
-2. Select **Create Release Notes & Publish Releases** workflow
-3. Click "Run workflow"
-4. Fill in:
-   - **Release branch** (e.g., `SG_RELEASE_1.0.0`)
-   - **Repositories** (comma-separated: `repo1,repo2,repo3`)
-5. Click "Run workflow"
 
 ## Workflows
 
 ### Create Release Branches
 
-**File:** `.github/workflows/create-release-branch.yml`
+Workflow:
 
-**Purpose:** Creates standardized release branches across multiple repositories.
+[create-release-branch.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-release-branch.yml)
 
-**Trigger:** Manual (`workflow_dispatch`)
+Purpose:
 
-**Workflow Inputs:**
+Creates release branches in one or more application repositories.
 
-| Input | Required | Example | Description |
-|-------|----------|---------|-------------|
-| `release_name` | Yes | `SG_RELEASE` | Release identifier |
-| `version` | Yes | `1.0.0` | Semantic version number |
-| `app_repos` | Yes | `app1,app2,app3` | Comma-separated repository names |
+Trigger:
 
-**Output:**
-- GitHub Actions job summary with per-repository status
-- Release branches created on all specified repositories
-- Format: `release/<release_name>_<version>`
-
-**Example:**
-```bash
-# Via GitHub CLI
-gh workflow run create-release-branch.yml \
-  -f release_name=SG_RELEASE \
-  -f version=1.0.0 \
-  -f app_repos=payment-service,auth-service,api-gateway
+```yaml
+workflow_dispatch
 ```
 
-### Create Release Notes & Publish Releases
-
-**File:** `.github/workflows/publish-release-notes.yml`
-
-**Purpose:** Creates annotated tags and publishes GitHub Releases with auto-generated notes.
-
-**Trigger:** Manual (`workflow_dispatch`)
-
-**Workflow Inputs:**
+Inputs:
 
 | Input | Required | Example | Description |
-|-------|----------|---------|-------------|
-| `release_branch` | Yes | `SG_RELEASE_1.0.0` | Release branch identifier |
-| `repositories` | Yes | `app1,app2,app3` | Comma-separated repository names |
+|---|---|---|---|
+| `release_name` | Yes | `SG_RELEASE` | Release identifier |
+| `version` | Yes | `1.0.0` | Release version |
+| `app_repos` | Yes | `application-one,application-two` | Comma-separated application repositories |
 
-**Output:**
-- Versioned tags with commit hash (e.g., `1.0.0-release-abc123f`)
-- GitHub Releases with auto-generated release notes
-- Comparison against previous release
+Example:
 
-**Example:**
-```bash
-# Via GitHub CLI
-gh workflow run publish-release-notes.yml \
-  -f release_branch=SG_RELEASE_1.0.0 \
-  -f repositories=payment-service,auth-service,api-gateway
+```text
+release_name = SG_RELEASE
+version      = 1.0.0
+app_repos    = application-one,application-two
+```
+
+Result:
+
+```text
+release/SG_RELEASE_1.0.0
+```
+
+### Create and Publish Release Notes
+
+Workflow:
+
+[create-and-publish-release-notes.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/publish-release-notes.yml)
+
+Purpose:
+
+Creates the release tag, generates release notes, and publishes the GitHub Release for the specified application repositories.
+
+Trigger:
+
+```yaml
+workflow_dispatch
+```
+
+Inputs:
+
+| Input | Required | Example | Description |
+|---|---|---|---|
+| `release_branch` | Yes | `SG_RELEASE_1.0.0` | Release identifier used to resolve the release branch |
+| `repositories` | Yes | `application-one,application-two` | Comma-separated application repositories |
+
+Example:
+
+```text
+release_branch = SG_RELEASE_1.0.0
+repositories   = application-one,application-two
+```
+
+The workflow converts:
+
+```text
+SG_RELEASE_1.0.0
+```
+
+to:
+
+```text
+release/SG_RELEASE_1.0.0
+```
+
+## Release Naming Convention
+
+### Release Branch
+
+Input:
+
+```text
+SG_RELEASE_1.0.0
+```
+
+Branch:
+
+```text
+release/SG_RELEASE_1.0.0
+```
+
+### Release Version
+
+The semantic version is extracted from the release identifier:
+
+```text
+SG_RELEASE_1.0.0
+```
+
+becomes:
+
+```text
+1.0.0
+```
+
+### Commit SHA
+
+The workflow gets the exact commit at the HEAD of the release branch.
+
+Example:
+
+```text
+Full SHA:
+81269a628a1d3929817439102b65cecd0d1af545
+
+Short SHA:
+81269a6
+```
+
+### Release Tag
+
+The release tag format is:
+
+```text
+<version>-release-<short-commit-sha>
+```
+
+Example:
+
+```text
+1.0.0-release-81269a6
+```
+
+The tag therefore identifies both the release version and the exact release commit.
+
+## Repository Resolution
+
+Application repositories are supplied by repository name:
+
+```text
+application-two
+```
+
+The workflow resolves this to the full repository:
+
+```text
+saghosh8/application-two
+```
+
+and uses the full repository path for API and Git operations.
+
+This avoids attempting to clone an incomplete URL such as:
+
+```text
+https://github.com/application-two.git
+```
+
+## Release Branch Validation
+
+The release publishing workflow expects the release branch to already exist.
+
+For:
+
+```text
+SG_RELEASE_1.0.0
+```
+
+it checks:
+
+```text
+release/SG_RELEASE_1.0.0
+```
+
+If the branch does not exist, the workflow fails.
+
+Example:
+
+```text
+Error: Release branch does not exist.
+Repository: saghosh8/application-two
+Branch: release/SG_RELEASE_1.0.0
+```
+
+## Tag Validation
+
+Before creating a release, the workflow checks whether the generated tag already exists.
+
+### Tag does not exist
+
+The workflow creates:
+
+```text
+1.0.0-release-81269a6
+```
+
+at the release branch commit.
+
+### Tag already exists
+
+The workflow checks that the existing tag points to the same commit as the release branch.
+
+Expected:
+
+```text
+81269a628a1d3929817439102b65cecd0d1af545
+```
+
+If the existing tag points to another commit, the workflow fails.
+
+Example:
+
+```text
+Error: Tag already exists but points to a different commit.
+Expected: 81269a628a1d3929817439102b65cecd0d1af545
+Actual:   <different SHA>
+```
+
+The workflow does not silently move or overwrite an existing tag.
+
+## Previous Release and Comparison
+
+After the current release tag is available, the workflow identifies the previous release tag and uses it as the starting point for the release comparison.
+
+Example:
+
+```text
+Previous:
+0.9.0-release-cfb154b
+
+Current:
+1.0.0-release-81269a6
+```
+
+The changes between the previous and current releases are then used to generate the GitHub Release notes.
+
+## Release Notes
+
+GitHub generates the release notes from the changes between the previous release and the current release.
+
+The published release contains the generated:
+
+- What's Changed section
+- Pull requests
+- Contributors
+- Full changelog comparison
+
+Example:
+
+```text
+What's Changed
+
+• Update values-prod.yaml by @saghosh8 in #3
+
+Full Changelog:
+0.9.0-release-cfb154b...1.0.0-release-81269a6
+```
+
+## GitHub Release
+
+The GitHub Release title is the generated release tag.
+
+Example:
+
+```text
+1.0.0-release-81269a6
+```
+
+The release is associated with the same tag:
+
+```text
+1.0.0-release-81269a6
+```
+
+and that tag points to the commit at:
+
+```text
+release/SG_RELEASE_1.0.0
 ```
 
 ## Configuration
 
-### Workflow Inputs
+### Required Secret
 
-#### Release Branch Workflow Inputs
+The workflows use:
 
-```yaml
-release_name:
-  description: "Release name (e.g. SG_RELEASE)"
-  required: true
-  type: string
-
-version:
-  description: "Release version (e.g. 1.0.0)"
-  required: true
-  type: string
-
-app_repos:
-  description: "Comma-separated list of application repository names"
-  required: true
-  type: string
+```text
+RELEASE_AUTOMATION_TOKEN
 ```
 
-#### Release Notes Workflow Inputs
+Store this as a GitHub Actions secret.
 
-```yaml
-release_branch:
-  description: "Release branch name, e.g. SG_RELEASE_1.0.0"
-  required: true
-  type: string
+Go to:
 
-repositories:
-  description: "Application repository name(s), comma-separated"
-  required: true
-  type: string
+```text
+Repository
+→ Settings
+→ Secrets and variables
+→ Actions
 ```
 
-### Required Secrets
+Create:
 
-#### RELEASE_AUTOMATION_TOKEN
+```text
+RELEASE_AUTOMATION_TOKEN
+```
 
-A GitHub Personal Access Token with the following permissions:
+The token must have access to all target application repositories and the permissions required by the workflows.
 
-**Classic PAT Scopes:**
-- `repo` — Full control of private repositories
-- `workflow` — Update GitHub Actions workflows
+Do not hard-code the token in a YAML file.
 
-**Fine-Grained PAT Permissions (per repository):**
-- `Contents` — Read & Write (for branches, tags, and commits)
-- `Releases` — Read & Write (for publishing releases)
-- `Workflows` — Read & Write (for updating workflows)
+## Example Release Process
 
-**Setup:**
-1. Create or select an existing PAT
-2. Add as secret `RELEASE_AUTOMATION_TOKEN` to this repository
-3. Ensure the token has access to all target repositories
+Assume the application repository is:
+
+```text
+saghosh8/application-two
+```
+
+### Step 1 — Create the release branch
+
+Run:
+
+```text
+Create Release Branches
+```
+
+Inputs:
+
+```text
+Release name: SG_RELEASE
+Version:      1.0.0
+Repository:   application-two
+```
+
+The workflow creates:
+
+```text
+release/SG_RELEASE_1.0.0
+```
+
+### Step 2 — Application changes
+
+Changes are committed to the release branch.
+
+The branch eventually points to:
+
+```text
+81269a628a1d3929817439102b65cecd0d1af545
+```
+
+Short SHA:
+
+```text
+81269a6
+```
+
+### Step 3 — Publish the release
+
+Run:
+
+```text
+Create and Publish Release Notes
+```
+
+Inputs:
+
+```text
+Release branch: SG_RELEASE_1.0.0
+Repository:     application-two
+```
+
+### Step 4 — Tag
+
+The workflow creates or validates:
+
+```text
+1.0.0-release-81269a6
+```
+
+### Step 5 — Generate release notes
+
+The workflow compares the previous release against:
+
+```text
+1.0.0-release-81269a6
+```
+
+and generates the GitHub Release notes.
+
+### Step 6 — Publish
+
+The GitHub Release is published using:
+
+```text
+1.0.0-release-81269a6
+```
+
+## Multi-Repository Example
+
+Multiple repositories can be supplied:
+
+```text
+application-one,application-two,application-three
+```
+
+Each repository is processed independently.
+
+Example:
+
+```text
+application-one
+    ↓
+release/SG_RELEASE_1.0.0
+    ↓
+1.0.0-release-abc1234
+    ↓
+GitHub Release
+
+application-two
+    ↓
+release/SG_RELEASE_1.0.0
+    ↓
+1.0.0-release-81269a6
+    ↓
+GitHub Release
+
+application-three
+    ↓
+release/SG_RELEASE_1.0.0
+    ↓
+1.0.0-release-def5678
+    ↓
+GitHub Release
+```
+
+If a required operation fails for a repository, the workflow fails.
+
+## Failure Handling
+
+The workflows are intentionally fail-fast.
+
+They use:
+
+```bash
+set -euo pipefail
+```
+
+The workflow fails for conditions such as:
+
+- Repository does not exist
+- Repository cannot be accessed
+- Release branch does not exist
+- Invalid release input
+- Commit SHA cannot be resolved
+- Tag creation fails
+- Existing tag points to a different commit
+- Previous release cannot be determined
+- Release comparison fails
+- Release note generation fails
+- GitHub Release creation fails
+- GitHub Release verification fails
+
+Errors identify the affected repository and branch/tag where possible.
 
 ## Security Considerations
 
-### Token Security
-- 🔒 **Never commit tokens** to version control
-- 🔒 **Use fine-grained PATs** with minimal required permissions
-- 🔒 **Rotate tokens regularly** (recommended: every 90 days)
-- 🔒 **Scope tokens to specific repositories** when possible
-- 🔒 **Use organization-level secrets** for multi-repo releases
-
-### Workflow Security
-- ✅ **Workflows validate all inputs** before processing
-- ✅ **Token validation** is performed at the start of each job
-- ✅ **No credentials logged** — sensitive data is masked
-- ✅ **Branch protection** should be enabled on `main` branches
-- ✅ **Audit logs** are generated in GitHub Actions job summaries
-
-### Branch Protection
-Recommended settings for application repositories:
-- Require pull request reviews before merging
-- Require status checks to pass before merging
-- Restrict direct pushes to `main`
-- Enforce branch naming conventions
-
-### Best Practices
-1. **Limit token access** to required repositories
-2. **Monitor workflow runs** for failures or anomalies
-3. **Review job summaries** after each release
-4. **Test with a single repository** before releasing multiple
-5. **Maintain release notes** for audit and compliance
+- Store `RELEASE_AUTOMATION_TOKEN` only as a GitHub Actions secret.
+- Never commit tokens to the repository.
+- Use the minimum required repository permissions.
+- Prefer a fine-grained token where possible.
+- Limit the token to the repositories used by the automation.
+- Do not print credentials in workflow logs.
+- Rotate tokens periodically.
+- Keep application `main` branches protected.
+- Do not automatically overwrite existing release tags.
 
 ## Troubleshooting
 
-### Release Branch Creation Fails
+### Repository Not Found
 
-**Problem:** `Failed to clone repository`
+Verify:
 
-**Solutions:**
-1. Verify `RELEASE_AUTOMATION_TOKEN` is configured correctly
-2. Check that the token has `repo` scope
-3. Verify repositories are accessible to the token owner
-4. Ensure `main` branch exists in the target repositories
+1. The repository name is correct.
+2. The repository exists.
+3. `RELEASE_AUTOMATION_TOKEN` has access.
+4. The workflow resolves the repository to the correct `owner/repository`.
 
-**Problem:** `Failed to push release branch`
+### Release Branch Not Found
 
-**Solutions:**
-1. Check branch protection rules on target repository
-2. Verify token has write access to repository
-3. Ensure branch name is valid (no special characters)
-4. Check for naming conflicts with existing branches
+For input:
 
-### Release Notes Generation Fails
+```text
+SG_RELEASE_1.0.0
+```
 
-**Problem:** `Release branch does not exist`
+the expected branch is:
 
-**Solutions:**
-1. Verify release branch was created successfully
-2. Run "Create Release Branches" workflow first
-3. Check branch name format: `release/<name>_<version>`
-4. Ensure no typos in repository or branch names
+```text
+release/SG_RELEASE_1.0.0
+```
 
-**Problem:** `No previous release tag found`
+Verify the branch exists in the target repository.
 
-**Solutions:**
-1. Ensure at least one previous release exists with tags
-2. Verify tag format follows pattern: `X.Y.Z-release-<hash>`
-3. Create initial release manually if none exist
-4. Check that `main` branch has release tags
+### Tag Already Exists With a Different Commit
 
-**Problem:** `Tag already exists but points to different commit`
+Do not delete or move the tag automatically.
 
-**Solutions:**
-1. Use different version number for new release
-2. Delete existing tag and retry (use caution)
-3. Verify release branch is based on correct commit
+Verify the existing tag and the release branch commit before deciding how to proceed.
 
-### Common Errors and Fixes
+### GitHub Release Already Exists
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `RELEASE_AUTOMATION_TOKEN is not configured` | Secret not added | Add `RELEASE_AUTOMATION_TOKEN` secret to repository |
-| `Repository does not exist or token has no access` | Invalid credentials | Verify token has correct permissions and access |
-| `Invalid release branch format` | Wrong naming pattern | Use format: `SG_RELEASE_X.Y.Z` |
-| `main branch does not exist` | Repository missing main | Ensure target repo has `main` branch |
-| `GitHub Release already exists` | Release tag already created | Use different version or delete existing release |
+Verify the existing GitHub Release before rerunning the workflow.
 
-### Debugging Tips
+The workflow should not create duplicate releases.
 
-1. **Check Actions Logs:** Review the full workflow logs for detailed error messages
-2. **Review Job Summaries:** Each workflow generates a summary with per-repository status
-3. **Verify Permissions:** Test token access with `gh auth status`
-4. **Test Single Repository:** Run workflows on one repository first to debug
-5. **Check Repository Settings:** Verify branch protection rules and permissions
+## Workflow URLs
+
+### Create Release Branches
+
+https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-release-branch.yml
+
+### Create and Publish Release Notes
+
+https://github.com/saghosh8/release-automation/blob/main/.github/workflows/publish-release-notes.yml
+
+### Repository
+
+https://github.com/saghosh8/release-automation
 
 ## Contributing
 
-Contributions are welcome! Please:
+1. Fork the repository.
+2. Create a feature branch.
 
-1. **Fork the repository**
-2. **Create a feature branch** (`git checkout -b feature/improvement`)
-3. **Make changes** and test thoroughly
-4. **Commit with clear messages** (`git commit -am 'Add new feature'`)
-5. **Push to your branch** (`git push origin feature/improvement`)
-6. **Open a Pull Request** with detailed description
+```bash
+git checkout -b feature/improvement
+```
 
-### Areas for Contribution
-- Workflow improvements and optimizations
-- Additional documentation and examples
-- Bug reports and fixes
-- Performance enhancements
-- New features (e.g., rollback, multi-org support)
+3. Make the changes.
+4. Test the workflows.
+5. Commit the changes.
+
+```bash
+git commit -m "Add release automation improvement"
+```
+
+6. Push the branch.
+
+```bash
+git push origin feature/improvement
+```
+
+7. Open a Pull Request.
 
 ## License
 
-This project is licensed under the **MIT License** — see the `LICENSE` file for details.
+This project is licensed under the MIT License.
 
----
+See the `LICENSE` file for details.
 
-**Questions?** Open an issue or review the [troubleshooting section](#troubleshooting).
+## Release Flow Summary
 
-**Found a bug?** Submit an issue with details about the error and steps to reproduce.
-
-**Have a feature request?** Create an issue describing your use case and desired functionality.
+```text
+Create Release Branch
+        ↓
+release/SG_RELEASE_1.0.0
+        ↓
+Application changes
+        ↓
+Validate release branch
+        ↓
+Get release branch commit
+        ↓
+Get short commit SHA
+        ↓
+Generate release tag
+        ↓
+1.0.0-release-81269a6
+        ↓
+Create or validate tag
+        ↓
+Find previous release
+        ↓
+Compare releases
+        ↓
+Generate release notes
+        ↓
+Publish GitHub Release
+        ↓
+Verify release
+```
