@@ -1,23 +1,42 @@
+values:
+  # APP_NAME is NOT set here — it is taken automatically from the
+  # repository name you pass in the "repo_names" workflow input,
+  # so every generated repo gets its own correct app/package/class name.
+  IMAGE_REPOSITORY: my-registry/application-two
+  IMAGE_TAG: "1.0.0"
+  DEV_REPLICA_COUNT: 1
+  UAT_REPLICA_COUNT: 2
+  PROD_REPLICA_COUNT: 3
+  CONTAINER_PORT: 8080
+  SERVICE_PORT: 80
+  SERVICE_TYPE: ClusterIP
+  INGRESS_ENABLED: true
+  INGRESS_HOST: application-two.example.com
+  HPA_ENABLED: true
+  HPA_MIN_REPLICAS: 2
+  HPA_MAX_REPLICAS: 5
+  HPA_CPU_TARGET: 70
+
 files:
 
-  - path: "src/main/java/com/example/application-name/ApplicationNameApplication.java"
+  - path: "src/main/java/${JAVA_PACKAGE_PATH}/${JAVA_CLASS_NAME}.java"
     content: |
-      package com.example.application-name;
+      package ${JAVA_PACKAGE};
 
       import org.springframework.boot.SpringApplication;
       import org.springframework.boot.autoconfigure.SpringBootApplication;
 
       @SpringBootApplication
-      public class ApplicationNameApplication {
+      public class ${JAVA_CLASS_NAME} {
 
           public static void main(String[] args) {
-              SpringApplication.run(ApplicationNameApplication.class, args);
+              SpringApplication.run(${JAVA_CLASS_NAME}.class, args);
           }
       }
 
-  - path: "src/main/java/com/example/application-name/controller/HealthController.java"
+  - path: "src/main/java/${JAVA_PACKAGE_PATH}/controller/HealthController.java"
     content: |
-      package com.example.application-name.controller;
+      package ${JAVA_PACKAGE}.controller;
 
       import org.springframework.web.bind.annotation.GetMapping;
       import org.springframework.web.bind.annotation.RestController;
@@ -40,13 +59,13 @@ files:
         application:
           name: ${APP_NAME}
 
-  - path: "src/test/java/com/example/application-name/ApplicationNameApplicationTests.java"
+  - path: "src/test/java/${JAVA_PACKAGE_PATH}/${JAVA_CLASS_NAME}Tests.java"
     content: |
-      package com.example.application-name;
+      package ${JAVA_PACKAGE};
 
       import org.junit.jupiter.api.Test;
 
-      class ApplicationNameApplicationTests {
+      class ${JAVA_CLASS_NAME}Tests {
 
           @Test
           void contextLoads() {
@@ -101,6 +120,56 @@ files:
 
       </project>
 
+  - path: "src/main/resources/application-dev.yml"
+    content: |
+      spring:
+        config:
+          activate:
+            on-profile: dev
+
+      server:
+        port: ${CONTAINER_PORT}
+
+  - path: "src/main/resources/application-uat.yml"
+    content: |
+      spring:
+        config:
+          activate:
+            on-profile: uat
+
+      server:
+        port: ${CONTAINER_PORT}
+
+  - path: "src/main/resources/application-prod.yml"
+    content: |
+      spring:
+        config:
+          activate:
+            on-profile: prod
+
+      server:
+        port: ${CONTAINER_PORT}
+
+  - path: "Dockerfile"
+    content: |
+      FROM eclipse-temurin:17-jre-alpine
+
+      WORKDIR /app
+
+      COPY target/*.jar app.jar
+
+      EXPOSE ${CONTAINER_PORT}
+
+      ENTRYPOINT ["java", "-jar", "app.jar"]
+
+  - path: ".dockerignore"
+    content: |
+      target/
+      .git/
+      .gitignore
+      README.md
+      helm/
+
   - path: "README.md"
     content: |
       # ${APP_NAME}
@@ -113,6 +182,12 @@ files:
       .idea/
       *.iml
       .DS_Store
+
+  - path: "helm/${APP_NAME}/.helmignore"
+    content: |
+      .git/
+      .DS_Store
+      *.tgz
 
   - path: "helm/${APP_NAME}/Chart.yaml"
     content: |
