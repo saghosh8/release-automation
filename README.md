@@ -101,12 +101,6 @@ Recommended token permissions:
 - Tag exists: the workflow checks for existing tags and skips tag creation if present.  
 - Check workflow logs and the GitHub Actions job summary for diagnostics.
 
-## Suggested CV / interview bullets
-- Built automated release orchestration using GitHub Actions to create release branches, generate release notes, and publish GitHub Releases across multiple repositories.  
-- Implemented token validation, resilient clone/push logic, and job summaries to improve release visibility and reduce manual work.  
-- Designed reusable, input-driven workflows that centralize multi-repo release operations.  
-- Leveraged the GitHub CLI and API to programmatically generate release notes and manage tags/releases.
-
 ## Contributing
 - Copy the workflows into your repo under `.github/workflows/` to reuse.  
 - Update secret names and token scopes as required.  
