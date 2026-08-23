@@ -78,7 +78,7 @@ jobs:
       # --------------------------------------------------
       - name: Check if repository exists
         env:
-          RELEASE_AUTOMATION_TOKEN: ${{ secrets.ORG_REPO_TOKEN }}
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         shell: bash
         run: |
           set -e
@@ -102,7 +102,7 @@ jobs:
       # --------------------------------------------------
       - name: Create repository
         env:
-          RELEASE_AUTOMATION_TOKEN: ${{ secrets.ORG_REPO_TOKEN }}
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         shell: bash
         run: |
           set -e
@@ -581,7 +581,7 @@ jobs:
       # --------------------------------------------------
       - name: Commit and push
         env:
-          RELEASE_AUTOMATION_TOKEN: ${{ secrets.ORG_REPO_TOKEN }}
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         shell: bash
         run: |
           set -e
