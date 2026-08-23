@@ -562,7 +562,8 @@ jobs:
           # Do not copy the automation workflow into the new repo.
           # Otherwise GitHub requires the PAT to have workflow scope.
           rm -rf .github
-
+          # Do not copy automation input files
+          rm -rf input_files
           # Initialize new Git repository
           git init
 
