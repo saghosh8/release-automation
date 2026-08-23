@@ -23,21 +23,26 @@ jobs:
 
     steps:
 
-      # ---------------------------------------------------------
+      # =========================================================
       # 1. Read Release Information
-      # ---------------------------------------------------------
+      # =========================================================
       - name: Read Release Information
         shell: bash
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
           APPLICATIONS: ${{ inputs.applications }}
         run: |
+          echo "========================================================"
+          echo "              CREATE GITHUB RELEASES"
+          echo "========================================================"
+          echo ""
           echo "Release Version : ${RELEASE_VERSION}"
           echo "Applications     : ${APPLICATIONS}"
+          echo ""
 
-      # ---------------------------------------------------------
-      # 2. Detect Organization
-      # ---------------------------------------------------------
+      # =========================================================
+      # 2. Detect GitHub Organization
+      # =========================================================
       - name: Detect GitHub Organization
         shell: bash
         run: |
@@ -47,9 +52,9 @@ jobs:
 
           echo "ORGANIZATION=${ORGANIZATION}" >> "$GITHUB_ENV"
 
-      # ---------------------------------------------------------
+      # =========================================================
       # 3. Validate PAT
-      # ---------------------------------------------------------
+      # =========================================================
       - name: Validate Release Automation Token
         shell: bash
         env:
@@ -62,9 +67,9 @@ jobs:
 
           echo "GitHub authentication token configured successfully."
 
-      # ---------------------------------------------------------
-      # 4. Generate Release Branch
-      # ---------------------------------------------------------
+      # =========================================================
+      # 4. Generate Release Branch Name
+      # =========================================================
       - name: Generate Release Branch Name
         shell: bash
         env:
@@ -74,11 +79,14 @@ jobs:
 
           echo "RELEASE_BRANCH=${RELEASE_BRANCH}" >> "$GITHUB_ENV"
 
-          echo "Release Branch: ${RELEASE_BRANCH}"
+          echo ""
+          echo "Release Branch:"
+          echo "${RELEASE_BRANCH}"
+          echo ""
 
-      # ---------------------------------------------------------
-      # 5. Create Releases
-      # ---------------------------------------------------------
+      # =========================================================
+      # 5. Create GitHub Releases
+      # =========================================================
       - name: Create GitHub Releases
         shell: bash
         env:
@@ -93,45 +101,73 @@ jobs:
 
           IFS=',' read -ra APPS <<< "${APPLICATIONS}"
 
+          declare -A RELEASE_RESULTS
+          declare -A RELEASE_TAGS
+          declare -A PREVIOUS_TAGS
+          declare -A RELEASE_URLS
+
+          TOTAL=0
+          SUCCESS=0
+          FAILED=0
+
           for REPO in "${APPS[@]}"; do
 
             REPO=$(echo "${REPO}" | xargs)
 
-            echo ""
-            echo "======================================"
-            echo "Processing: ${REPO}"
-            echo "Release Branch: ${RELEASE_BRANCH}"
-            echo "======================================"
+            TOTAL=$((TOTAL + 1))
 
-            # ---------------------------------------------------
-            # Get release branch commit
-            # ---------------------------------------------------
-            NEW_COMMIT=$(gh api \
+            echo ""
+            echo "========================================================"
+            echo "Processing Repository : ${REPO}"
+            echo "Release Branch        : ${RELEASE_BRANCH}"
+            echo "========================================================"
+            echo ""
+
+            # =====================================================
+            # 5.1 Get commit from release branch
+            # =====================================================
+
+            echo "Getting release branch commit..."
+
+            if ! NEW_COMMIT=$(gh api \
               "repos/${ORGANIZATION}/${REPO}/git/ref/heads/${RELEASE_BRANCH}" \
-              --jq '.object.sha')
+              --jq '.object.sha'); then
+
+              echo "❌ Unable to find release branch."
+
+              RELEASE_RESULTS["${REPO}"]="failed"
+
+              FAILED=$((FAILED + 1))
+
+              continue
+            fi
 
             SHORT_COMMIT="${NEW_COMMIT:0:7}"
 
-            echo "New Commit      : ${NEW_COMMIT}"
-            echo "Short Commit    : ${SHORT_COMMIT}"
+            echo "Full Commit ID  : ${NEW_COMMIT}"
+            echo "Short Commit ID : ${SHORT_COMMIT}"
+            echo ""
 
-            # ---------------------------------------------------
-            # Create new release tag
-            # Example:
-            # 1.0.1-release-6c4db90
-            # ---------------------------------------------------
+            # =====================================================
+            # 5.2 Generate release tag
+            # =====================================================
+
             NEW_TAG="${RELEASE_VERSION}-release-${SHORT_COMMIT}"
 
-            echo "New Tag: ${NEW_TAG}"
+            echo "New Release Tag:"
+            echo "${NEW_TAG}"
+            echo ""
 
-            # ---------------------------------------------------
-            # Check if tag already exists
-            # ---------------------------------------------------
+            # =====================================================
+            # 5.3 Check if tag already exists
+            # =====================================================
+
             if gh api \
               "repos/${ORGANIZATION}/${REPO}/git/ref/tags/${NEW_TAG}" \
               > /dev/null 2>&1; then
 
-              echo "Tag ${NEW_TAG} already exists."
+              echo "Tag already exists:"
+              echo "${NEW_TAG}"
 
             else
 
@@ -143,75 +179,163 @@ jobs:
                 -f "ref=refs/tags/${NEW_TAG}" \
                 -f "sha=${NEW_COMMIT}"
 
-              echo "Tag created successfully."
+              echo "✅ Tag created successfully."
 
             fi
 
-            # ---------------------------------------------------
-            # Find previous tag
-            # ---------------------------------------------------
-            echo "Finding previous tag..."
+            # =====================================================
+            # 5.4 Find previous published release tag
+            # =====================================================
+
+            echo ""
+            echo "Finding previous release tag..."
 
             OLD_TAG=""
-            if gh api "repos/${ORGANIZATION}/${REPO}/releases/latest" --jq '.tag_name' > /tmp/latest_tag.txt 2>/dev/null; then
-              OLD_TAG=$(cat /tmp/latest_tag.txt)
-              echo "Previous Tag: ${OLD_TAG}"
+
+            OLD_TAG=$(gh release list \
+              --repo "${ORGANIZATION}/${REPO}" \
+              --limit 1 \
+              --exclude-drafts \
+              --exclude-pre-releases \
+              --json tagName \
+              --jq '.[0].tagName' 2>/dev/null || true)
+
+            if [[ -n "${OLD_TAG}" && "${OLD_TAG}" != "null" ]]; then
+
+              echo "Previous Release Tag:"
+              echo "${OLD_TAG}"
+
             else
-              echo "No previous release found. This is the first release."
+
+              echo "No previous published release found."
+              echo "This will be treated as the first release."
+
+              OLD_TAG=""
+
             fi
 
-            # ---------------------------------------------------
-            # Generate Release Notes
-            # ---------------------------------------------------
-            echo "Generating release notes..."
+            # =====================================================
+            # 5.5 Generate GitHub Release Notes
+            # =====================================================
 
-            if [[ -z "${OLD_TAG}" ]]; then
-              # First release - generate notes without previous tag
+            echo ""
+            echo "Generating GitHub release notes..."
+
+            if [[ -n "${OLD_TAG}" ]]; then
+
               RELEASE_NOTES=$(gh api \
                 --method POST \
                 "repos/${ORGANIZATION}/${REPO}/releases/generate-notes" \
                 -f "tag_name=${NEW_TAG}" \
-                -f "target_commitish=main" \
-                --jq '.body')
-            else
-              # Subsequent release - generate notes since previous tag
-              RELEASE_NOTES=$(gh api \
-                --method POST \
-                "repos/${ORGANIZATION}/${REPO}/releases/generate-notes" \
-                -f "tag_name=${NEW_TAG}" \
-                -f "target_commitish=main" \
                 -f "previous_tag_name=${OLD_TAG}" \
                 --jq '.body')
+
+            else
+
+              RELEASE_NOTES=$(gh api \
+                --method POST \
+                "repos/${ORGANIZATION}/${REPO}/releases/generate-notes" \
+                -f "tag_name=${NEW_TAG}" \
+                --jq '.body')
+
             fi
 
-            echo "Release notes generated."
+            echo "✅ Release notes generated."
 
-            # ---------------------------------------------------
-            # Create and Publish Release
-            # ---------------------------------------------------
-            echo "Creating GitHub Release..."
+            # =====================================================
+            # 5.6 Create GitHub Release
+            # =====================================================
 
-            gh api \
+            echo ""
+            echo "Publishing GitHub Release..."
+
+            RELEASE_RESPONSE=$(gh api \
               --method POST \
               "repos/${ORGANIZATION}/${REPO}/releases" \
               -f "tag_name=${NEW_TAG}" \
-              -f "target_commitish=main" \
               -f "name=${RELEASE_VERSION}" \
               -f "body=${RELEASE_NOTES}" \
               -F draft=false \
-              -F prerelease=false
+              -F prerelease=false)
+
+            RELEASE_URL=$(echo "${RELEASE_RESPONSE}" | jq -r '.html_url')
 
             echo ""
             echo "✅ Release published successfully"
-            echo "Repository : ${REPO}"
-            echo "Old Tag    : ${OLD_TAG:-"(first release)"}"
-            echo "New Tag    : ${NEW_TAG}"
+            echo ""
+            echo "Repository       : ${REPO}"
+            echo "Release Version  : ${RELEASE_VERSION}"
+            echo "Previous Tag     : ${OLD_TAG:-"(first release)"}"
+            echo "New Tag          : ${NEW_TAG}"
+            echo "Release URL      : ${RELEASE_URL}"
+
+            RELEASE_RESULTS["${REPO}"]="success"
+            RELEASE_TAGS["${REPO}"]="${NEW_TAG}"
+            PREVIOUS_TAGS["${REPO}"]="${OLD_TAG:-"(first release)"}"
+            RELEASE_URLS["${REPO}"]="${RELEASE_URL}"
+
+            SUCCESS=$((SUCCESS + 1))
 
           done
 
-      # ---------------------------------------------------------
-      # 6. Generate Job Summary
-      # ---------------------------------------------------------
+          # =======================================================
+          # Store results for summary
+          # =======================================================
+
+          echo "RELEASE_RESULTS<<EOF" >> "$GITHUB_ENV"
+
+          for REPO in "${!RELEASE_RESULTS[@]}"; do
+            echo "${REPO}:${RELEASE_RESULTS[${REPO}]}" >> "$GITHUB_ENV"
+          done
+
+          echo "EOF" >> "$GITHUB_ENV"
+
+          echo "RELEASE_TAGS<<EOF" >> "$GITHUB_ENV"
+
+          for REPO in "${!RELEASE_TAGS[@]}"; do
+            echo "${REPO}:${RELEASE_TAGS[${REPO}]}" >> "$GITHUB_ENV"
+          done
+
+          echo "EOF" >> "$GITHUB_ENV"
+
+          echo "PREVIOUS_TAGS<<EOF" >> "$GITHUB_ENV"
+
+          for REPO in "${!PREVIOUS_TAGS[@]}"; do
+            echo "${REPO}:${PREVIOUS_TAGS[${REPO}]}" >> "$GITHUB_ENV"
+          done
+
+          echo "EOF" >> "$GITHUB_ENV"
+
+          echo "RELEASE_URLS<<EOF" >> "$GITHUB_ENV"
+
+          for REPO in "${!RELEASE_URLS[@]}"; do
+            echo "${REPO}:${RELEASE_URLS[${REPO}]}" >> "$GITHUB_ENV"
+          done
+
+          echo "EOF" >> "$GITHUB_ENV"
+
+          # =======================================================
+          # Overall result
+          # =======================================================
+
+          echo ""
+          echo "========================================================"
+          echo "                 RELEASE RESULT"
+          echo "========================================================"
+          echo ""
+          echo "Total     : ${TOTAL}"
+          echo "Successful: ${SUCCESS}"
+          echo "Failed    : ${FAILED}"
+          echo ""
+
+          if [[ "${FAILED}" -gt 0 ]]; then
+            echo "::error::One or more releases failed."
+            exit 1
+          fi
+
+      # =========================================================
+      # 6. Generate GitHub Actions Summary
+      # =========================================================
       - name: Generate Release Summary
         if: always()
         shell: bash
@@ -220,8 +344,14 @@ jobs:
           APPLICATIONS: ${{ inputs.applications }}
           ORGANIZATION: ${{ env.ORGANIZATION }}
           RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }}
+          RELEASE_RESULTS: ${{ env.RELEASE_RESULTS }}
+          RELEASE_TAGS: ${{ env.RELEASE_TAGS }}
+          PREVIOUS_TAGS: ${{ env.PREVIOUS_TAGS }}
+          RELEASE_URLS: ${{ env.RELEASE_URLS }}
         run: |
+
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+
           # 🚀 Release Creation
 
           ## Release Details
@@ -231,16 +361,107 @@ jobs:
           | Release Version | \`${RELEASE_VERSION}\` |
           | Organization | \`${ORGANIZATION}\` |
           | Release Branch | \`${RELEASE_BRANCH}\` |
-          | Target Branch | \`main\` |
           | Applications | \`${APPLICATIONS}\` |
 
-          ## Actions Performed
+          ## Release Results
 
-          - ✅ Release branch identified
-          - ✅ Release branch commit identified
-          - ✅ Short commit ID generated
-          - ✅ Release tag created
-          - ✅ Previous tag identified
-          - ✅ Release notes generated
-          - ✅ GitHub Release published
+          | Repository | Previous Tag | New Tag | Status | Release |
+          |---|---|---|---|---|
+          EOF
+
+          IFS=',' read -ra APPS <<< "${APPLICATIONS}"
+
+          TOTAL=0
+          SUCCESS=0
+          FAILED=0
+
+          for REPO in "${APPS[@]}"; do
+
+            REPO=$(echo "${REPO}" | xargs)
+
+            TOTAL=$((TOTAL + 1))
+
+            RESULT="failed"
+            NEW_TAG=""
+            OLD_TAG=""
+            RELEASE_URL=""
+
+            while IFS=: read -r repo status; do
+              if [[ "$repo" == "$REPO" ]]; then
+                RESULT="$status"
+                break
+              fi
+            done <<< "${RELEASE_RESULTS}"
+
+            while IFS=: read -r repo tag; do
+              if [[ "$repo" == "$REPO" ]]; then
+                NEW_TAG="$tag"
+                break
+              fi
+            done <<< "${RELEASE_TAGS}"
+
+            while IFS=: read -r repo tag; do
+              if [[ "$repo" == "$REPO" ]]; then
+                OLD_TAG="$tag"
+                break
+              fi
+            done <<< "${PREVIOUS_TAGS}"
+
+            while IFS=: read -r repo url; do
+              if [[ "$repo" == "$REPO" ]]; then
+                RELEASE_URL="$url"
+                break
+              fi
+            done <<< "${RELEASE_URLS}"
+
+            if [[ "$RESULT" == "success" ]]; then
+
+              SUCCESS=$((SUCCESS + 1))
+
+              echo "| \`${REPO}\` | \`${OLD_TAG}\` | \`${NEW_TAG}\` | ✅ Published | [Open Release](${RELEASE_URL}) |" \
+                >> "$GITHUB_STEP_SUMMARY"
+
+            else
+
+              FAILED=$((FAILED + 1))
+
+              echo "| \`${REPO}\` | — | — | ❌ Release Not Created | — |" \
+                >> "$GITHUB_STEP_SUMMARY"
+
+            fi
+
+          done
+
+          if [[ "${FAILED}" -eq 0 ]]; then
+            OVERALL_STATUS="✅ All releases published successfully"
+          else
+            OVERALL_STATUS="❌ One or more releases failed"
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+
+          ## Overall Result
+
+          ${OVERALL_STATUS}
+
+          | Metric | Count |
+          |---|---:|
+          | Total Applications | ${TOTAL} |
+          | Releases Published | ${SUCCESS} |
+          | Releases Failed | ${FAILED} |
+
+          ## Release Flow
+
+          \`Release Branch\`
+          ↓
+          \`Get Branch Commit\`
+          ↓
+          \`Create Version-Release-ShortCommit Tag\`
+          ↓
+          \`Find Previous Published Release Tag\`
+          ↓
+          \`Generate GitHub Release Notes\`
+          ↓
+          \`Publish GitHub Release\`
+
           EOF
