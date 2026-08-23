@@ -28,9 +28,9 @@ jobs:
 
     steps:
 
-      # ---------------------------------------------------------
-      # 1. Read release inputs
-      # ---------------------------------------------------------
+      # =========================================================
+      # 1. Read Release Information
+      # =========================================================
       - name: Read Release Information
         shell: bash
         env:
@@ -47,9 +47,9 @@ jobs:
           echo "Application Repos : ${APP_REPOS}"
           echo ""
 
-      # ---------------------------------------------------------
-      # 2. Detect organization
-      # ---------------------------------------------------------
+      # =========================================================
+      # 2. Detect GitHub Organization
+      # =========================================================
       - name: Detect GitHub Organization
         shell: bash
         run: |
@@ -59,24 +59,27 @@ jobs:
 
           echo "ORGANIZATION=${ORGANIZATION}" >> "$GITHUB_ENV"
 
-      # ---------------------------------------------------------
+      # =========================================================
       # 3. Validate PAT
-      # ---------------------------------------------------------
+      # =========================================================
       - name: Validate Release Automation Token
         shell: bash
         env:
           RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
+          echo "[Authentication] Validating GitHub token..."
+
           if [[ -z "${RELEASE_AUTOMATION_TOKEN}" ]]; then
             echo "::error::RELEASE_AUTOMATION_TOKEN is not configured."
             exit 1
           fi
 
-          echo "GitHub authentication token configured successfully."
+          echo "Authentication : ✓ Token configured"
+          echo ""
 
-      # ---------------------------------------------------------
-      # 4. Generate release branch name
-      # ---------------------------------------------------------
+      # =========================================================
+      # 4. Generate Release Branch Name
+      # =========================================================
       - name: Generate Release Branch Name
         shell: bash
         env:
@@ -85,13 +88,13 @@ jobs:
         run: |
           BRANCH_NAME="release/${RELEASE_NAME}_${VERSION}"
 
-          echo "Release branch: ${BRANCH_NAME}"
+          echo "Release Branch: ${BRANCH_NAME}"
 
           echo "BRANCH_NAME=${BRANCH_NAME}" >> "$GITHUB_ENV"
 
-      # ---------------------------------------------------------
-      # 5. Create branches for all applications
-      # ---------------------------------------------------------
+      # =========================================================
+      # 5. Create Release Branches
+      # =========================================================
       - name: Create Release Branches for Applications
         shell: bash
         env:
@@ -104,46 +107,73 @@ jobs:
 
           declare -A app_results
 
+          TOTAL=0
+          SUCCESS=0
+          FAILED=0
+
           for app in "${APPS[@]}"; do
 
             app=$(echo "$app" | xargs)
 
+            TOTAL=$((TOTAL + 1))
+
             echo ""
-            echo "Processing repository: ${app}"
+            echo "========================================================"
+            echo "Processing Repository: ${app}"
+            echo "========================================================"
 
             temp_dir="/tmp/${app}"
 
+            rm -rf "${temp_dir}"
             mkdir -p "${temp_dir}"
 
+            # -----------------------------------------------------
             # Clone main branch
+            # -----------------------------------------------------
+
+            echo "Cloning ${ORGANIZATION}/${app} from main..."
+
             if git clone \
               --depth 1 \
               --branch main \
               "https://x-access-token:${RELEASE_AUTOMATION_TOKEN}@github.com/${ORGANIZATION}/${app}.git" \
               "${temp_dir}" 2>&1; then
 
+              echo "✓ Repository cloned successfully."
+
               cd "${temp_dir}"
 
-              echo "Main branch cloned successfully."
-
+              # ---------------------------------------------------
               # Create release branch
+              # ---------------------------------------------------
+
+              echo "Creating branch: ${BRANCH_NAME}"
+
               if git checkout -b "${BRANCH_NAME}"; then
 
-                echo "Release branch created: ${BRANCH_NAME}"
+                echo "✓ Release branch created locally."
 
+                # -------------------------------------------------
                 # Push release branch
+                # -------------------------------------------------
+
+                echo "Pushing branch to remote..."
+
                 if git push origin "${BRANCH_NAME}" 2>&1; then
 
                   app_results["${app}"]="success"
 
-                  echo "Successfully created and pushed:"
-                  echo "${BRANCH_NAME}"
+                  SUCCESS=$((SUCCESS + 1))
+
+                  echo "✓ Release branch pushed successfully."
 
                 else
 
                   app_results["${app}"]="failed"
 
-                  echo "Failed to push branch for ${app}"
+                  FAILED=$((FAILED + 1))
+
+                  echo "❌ Failed to push release branch."
 
                 fi
 
@@ -151,7 +181,9 @@ jobs:
 
                 app_results["${app}"]="failed"
 
-                echo "Failed to create branch for ${app}"
+                FAILED=$((FAILED + 1))
+
+                echo "❌ Failed to create release branch."
 
               fi
 
@@ -161,7 +193,10 @@ jobs:
 
               app_results["${app}"]="failed"
 
-              echo "Failed to clone ${app}"
+              FAILED=$((FAILED + 1))
+
+              echo "❌ Failed to clone repository."
+              echo "   Repository may not exist or PAT may not have access."
 
             fi
 
@@ -169,7 +204,10 @@ jobs:
 
           done
 
-          # Store results for summary
+          # =======================================================
+          # Store results
+          # =======================================================
+
           echo "APP_RESULTS<<EOF" >> "$GITHUB_ENV"
 
           for app in "${!app_results[@]}"; do
@@ -178,9 +216,28 @@ jobs:
 
           echo "EOF" >> "$GITHUB_ENV"
 
-      # ---------------------------------------------------------
-      # 6. GitHub Actions Job Summary
-      # ---------------------------------------------------------
+          echo ""
+          echo "========================================================"
+          echo "              RELEASE BRANCH RESULT"
+          echo "========================================================"
+          echo ""
+          echo "Total     : ${TOTAL}"
+          echo "Successful: ${SUCCESS}"
+          echo "Failed    : ${FAILED}"
+          echo ""
+
+          # IMPORTANT:
+          # Fail the GitHub Actions step if ANY repository failed.
+          if [[ "${FAILED}" -gt 0 ]]; then
+            echo "::error::Release branch creation failed for ${FAILED} repository/repositories."
+            exit 1
+          fi
+
+          echo "All release branches created successfully."
+
+      # =========================================================
+      # 6. Generate GitHub Actions Job Summary
+      # =========================================================
       - name: Generate Release Summary
         if: always()
         shell: bash
@@ -190,6 +247,7 @@ jobs:
           ORGANIZATION: ${{ env.ORGANIZATION }}
           BRANCH_NAME: ${{ env.BRANCH_NAME }}
           APP_REPOS: ${{ inputs.app_repos }}
+          APP_RESULTS: ${{ env.APP_RESULTS }}
         run: |
 
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
@@ -208,32 +266,84 @@ jobs:
 
           ## Repositories Processed
 
-          | Repository | Release Branch | Status |
-          |---|---|---|
+          | Repository | Release Branch | Status | Branch URL |
+          |---|---|---|---|
           EOF
 
           IFS=',' read -ra APPS <<< "${APP_REPOS}"
+
+          TOTAL=0
+          SUCCESS=0
+          FAILED=0
 
           for app in "${APPS[@]}"; do
 
             app=$(echo "$app" | xargs)
 
-            echo "| \`${app}\` | \`${BRANCH_NAME}\` | ✅ Branch Created |" \
-              >> "$GITHUB_STEP_SUMMARY"
+            TOTAL=$((TOTAL + 1))
+
+            result="failed"
+
+            while IFS=: read -r repo status; do
+
+              if [[ "$repo" == "$app" ]]; then
+                result="$status"
+                break
+              fi
+
+            done <<< "${APP_RESULTS}"
+
+            BRANCH_URL="https://github.com/${ORGANIZATION}/${app}/tree/${BRANCH_NAME}"
+
+            if [[ "$result" == "success" ]]; then
+
+              STATUS="✅ Branch Created"
+
+              SUCCESS=$((SUCCESS + 1))
+
+              echo "| \`${app}\` | \`${BRANCH_NAME}\` | ${STATUS} | [Open Branch](${BRANCH_URL}) |" \
+                >> "$GITHUB_STEP_SUMMARY"
+
+            else
+
+              STATUS="❌ Branch Not Created"
+
+              FAILED=$((FAILED + 1))
+
+              echo "| \`${app}\` | \`${BRANCH_NAME}\` | ${STATUS} | — |" \
+                >> "$GITHUB_STEP_SUMMARY"
+
+            fi
 
           done
 
+          if [[ "${FAILED}" -eq 0 ]]; then
+            OVERALL_STATUS="✅ All release branches created successfully"
+          else
+            OVERALL_STATUS="❌ Release branch creation failed"
+          fi
+
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+
+          ## Overall Result
+
+          ${OVERALL_STATUS}
+
+          | Metric | Count |
+          |---|---:|
+          | Total Repositories | ${TOTAL} |
+          | Successful | ${SUCCESS} |
+          | Failed | ${FAILED} |
 
           ## Actions Performed
 
           - ✅ Release inputs received
           - ✅ Organization detected automatically
           - ✅ GitHub authentication validated
-          - ✅ Application repositories cloned from \`main\`
+          - ✅ Application repositories processed
           - ✅ Release branch generated
-          - ✅ Release branch created
-          - ✅ Release branch pushed to application repositories
+          - ✅ Release branch creation attempted
+          - ✅ Individual repository results recorded
 
           ## Release Branch
 
