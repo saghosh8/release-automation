@@ -11,6 +11,7 @@ Automates multi-repository release branch creation, version tagging, release not
 - [Prerequisites](#prerequisites)
 - [Getting Started](#getting-started)
 - [Workflows](#workflows)
+- [Triggering CI and CD - Prod Pipelines](#triggering-ci-and-cd---prod-pipelines)
 - [Release Naming Convention](#release-naming-convention)
 - [Application Repository Configuration](#application-repository-configuration)
 - [Configuration](#configuration)
@@ -39,7 +40,11 @@ The automation handles:
 - GitHub Release note generation
 - GitHub Release publishing
 - Release verification
+- Triggering downstream CI pipelines in application repositories
+- Triggering downstream CD - Prod pipelines in application repositories
 - Failure handling
+
+> **Status note:** the CI and CD - Prod triggering workflows described below (`prod_ci.yml` and `prod_cd.yml`) are currently on the `saghosh8-patch-6` branch and are not yet merged into `main`. Once merged, they will be available from the `main` branch like the other workflows.
 
 ## Features
 
@@ -62,6 +67,9 @@ The automation handles:
 - Publish GitHub Releases
 - Verify tags and releases
 - Fail the workflow when a required step fails
+- Trigger an application repository's `CI` workflow remotely on a given branch
+- Trigger an application repository's `CD - Prod` workflow remotely with a specific release tag
+- Verify that the target `CI` / `CD - Prod` workflow exists in the application repository before triggering it
 - Use `RELEASE_AUTOMATION_TOKEN` for cross-repository access
 
 ## How It Works
@@ -159,6 +167,55 @@ It then, for each repository listed in `prod_Old_tag.txt`:
 
 If a required step fails for a repository, the workflow fails.
 
+### 4. Trigger CI Pipeline
+
+The CI trigger workflow receives a branch and one or more application repositories.
+
+For example:
+
+```
+Branch: release/SG_RELEASE_1.0.0
+Repositories: application-one,application-two
+```
+
+For each repository, it:
+
+1. Resolves the repository to its full `owner/repository` name.
+2. Verifies that the given branch exists in that repository.
+3. Verifies that a workflow named `CI` exists in that repository.
+4. Triggers the `CI` workflow on that branch via `gh workflow run`.
+
+This does not wait for the CI run to complete — it only submits the trigger request and reports success once the request is accepted.
+
+### 5. Trigger CD - Prod Pipeline
+
+The CD - Prod trigger workflow receives a release branch and reads the repositories to deploy, along with the image tag for each, from a file checked into this repository:
+
+```
+input_files/prod_New_tag.txt
+```
+
+Each non-empty, non-comment line has the format:
+
+```
+<repository-name>:<image-tag>
+```
+
+For example:
+
+```
+application-one:1.0.0-release-abc1234
+application-two:1.0.0-release-81269a6
+```
+
+For each line, the workflow:
+
+1. Resolves the repository to its full `owner/repository` name.
+2. Verifies that a workflow named `CD - Prod` exists in that repository.
+3. Triggers the `CD - Prod` workflow on the given release branch, passing the image tag as the `release_tag` input.
+
+Like the CI trigger, this only submits the request — it does not wait for the deployment to finish.
+
 ## Project Structure
 
 ```
@@ -167,10 +224,13 @@ release-automation/
 │   └── workflows/
 │       ├── create-app-repos.yml
 │       ├── create-release-branch.yml
-│       └── publish-release-notes.yml
+│       ├── publish-release-notes.yml
+│       ├── prod_ci.yml            (pending merge, branch saghosh8-patch-6)
+│       └── prod_cd.yml            (pending merge, branch saghosh8-patch-6)
 ├── input_files/
 │   ├── app_config.yaml
-│   └── prod_Old_tag.txt
+│   ├── prod_Old_tag.txt
+│   └── prod_New_tag.txt           (pending merge, branch saghosh8-patch-6)
 ├── README.md
 └── LICENSE
 ```
@@ -300,6 +360,98 @@ release/SG_RELEASE_1.0.0
 ```
 
 and processes every repository listed in `prod_Old_tag.txt` against that branch.
+
+### Trigger CI Pipeline
+
+> Currently on branch `saghosh8-patch-6`, not yet merged to `main`.
+
+Workflow: [prod_ci.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/prod_ci.yml)
+
+Purpose:
+
+Remotely triggers the `CI` workflow in one or more application repositories, on a given branch.
+
+Trigger:
+
+```
+workflow_dispatch
+```
+
+Inputs:
+
+| Input          | Required | Example                           | Description                                          |
+| -------------- | -------- | ---------------------------------- | ----------------------------------------------------- |
+| `branch`       | Yes      | `release/SG_RELEASE_1.0.0`         | Branch to run CI from                                 |
+| `repositories` | Yes      | `application-one,application-two`  | Comma-separated application repository names          |
+
+Example:
+
+```
+branch       = release/SG_RELEASE_1.0.0
+repositories = application-one,application-two
+```
+
+Result:
+
+The `CI` workflow is triggered in `application-one` and `application-two` on `release/SG_RELEASE_1.0.0`.
+
+Notes:
+
+- The target repository must have a workflow whose `name:` is exactly `CI`; the trigger workflow looks it up by name via `gh workflow list` and fails that repository if it isn't found.
+- The workflow verifies the branch exists in the target repository before attempting to trigger anything.
+- Triggering is fire-and-forget — the workflow reports the trigger request as successful once GitHub accepts it, and does not wait for or report on the triggered run's outcome.
+
+### Trigger CD - Prod Pipeline
+
+> Currently on branch `saghosh8-patch-6`, not yet merged to `main`.
+
+Workflow: [prod_cd.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/prod_cd.yml)
+
+Purpose:
+
+Remotely triggers the `CD - Prod` workflow in the application repositories listed in `input_files/prod_New_tag.txt`, passing each repository's image tag along.
+
+Trigger:
+
+```
+workflow_dispatch
+```
+
+Inputs:
+
+| Input            | Required | Example                     | Description                    |
+| ---------------- | -------- | ---------------------------- | -------------------------------|
+| `release_branch` | Yes      | `release/SG_RELEASE_1.0.0`   | Release branch to deploy from  |
+
+The list of repositories to deploy, and the image tag to deploy for each, comes from `input_files/prod_New_tag.txt` — not from a workflow input. Update that file before running this workflow.
+
+Format (same style as `prod_Old_tag.txt`):
+
+```
+<repository-name>:<image-tag>
+```
+
+Example:
+
+```
+release_branch = release/SG_RELEASE_1.0.0
+```
+
+```
+input_files/prod_New_tag.txt:
+application-one:1.0.0-release-abc1234
+application-two:1.0.0-release-81269a6
+```
+
+Result:
+
+The `CD - Prod` workflow is triggered in `application-one` and `application-two` on `release/SG_RELEASE_1.0.0`, each with its own `release_tag` input value taken from `prod_New_tag.txt`.
+
+Notes:
+
+- The target repository must have a workflow whose `name:` is exactly `CD - Prod`; the trigger workflow looks it up by name and fails that repository if it isn't found.
+- Unlike `prod_ci.yml`, this workflow does not verify that `release_branch` exists before triggering — the target `CD - Prod` workflow is expected to fail on its own if the ref is invalid.
+- Triggering is fire-and-forget, same as the CI trigger workflow above.
 
 ## Release Naming Convention
 
@@ -504,6 +656,37 @@ and that tag points to the commit at:
 ```
 release/SG_RELEASE_1.0.0
 ```
+
+## Triggering CI and CD - Prod Pipelines
+
+> The workflows in this section (`prod_ci.yml`, `prod_cd.yml`) are currently on branch `saghosh8-patch-6` and pending merge to `main`.
+
+Once a release branch exists and has commits, the CI and CD - Prod trigger workflows let this repository kick off pipelines in the application repositories remotely, instead of requiring someone to go trigger them by hand in each repo.
+
+Typical order relative to the rest of the release process:
+
+```
+release/SG_RELEASE_1.0.0 created
+        ↓
+Application changes committed
+        ↓
+Trigger CI Pipeline (prod_ci.yml)
+    branch = release/SG_RELEASE_1.0.0
+        ↓
+CI passes in each application repository
+        ↓
+Create and Publish Release Notes (publish-release-notes.yml)
+    → release tag created, e.g. 1.0.0-release-81269a6
+        ↓
+Update input_files/prod_New_tag.txt with the new tag per repository
+        ↓
+Trigger CD - Prod Pipeline (prod_cd.yml)
+    release_branch = release/SG_RELEASE_1.0.0
+        ↓
+CD - Prod deploys the tagged image in each application repository
+```
+
+Both workflows expect the corresponding workflow (`CI` or `CD - Prod`) to already exist, by that exact name, in each target application repository — this automation only triggers them, it does not create or modify them.
 
 ## Application Repository Configuration
 
@@ -777,6 +960,11 @@ The workflow fails for conditions such as:
 - Release note generation fails
 - GitHub Release creation fails
 - GitHub Release verification fails
+- `branch` or `repositories` input is empty (CI trigger workflow)
+- Target branch does not exist in the repository (CI trigger workflow)
+- A workflow named `CI` is not found in the target repository (CI trigger workflow)
+- `input_files/prod_New_tag.txt` is missing, empty, or missing a tag for a repository (CD - Prod trigger workflow)
+- A workflow named `CD - Prod` is not found in the target repository (CD - Prod trigger workflow)
 
 Errors identify the affected repository and branch/tag where possible.
 
@@ -852,6 +1040,22 @@ Verify the existing GitHub Release before rerunning the workflow.
 
 The workflow should not create duplicate releases.
 
+### `CI` Workflow Not Found
+
+The CI trigger workflow (`prod_ci.yml`) looks for a workflow named exactly `CI` in the target application repository. Confirm the application repository has a workflow file whose `name:` field is `CI`, not just a filename that contains "ci".
+
+### `CD - Prod` Workflow Not Found
+
+Same as above, but for a workflow named exactly `CD - Prod` in the target repository, triggered by `prod_cd.yml`.
+
+### `prod_New_tag.txt` Errors
+
+Verify:
+
+1. `input_files/prod_New_tag.txt` exists and is not empty.
+2. Every repository you expect to deploy has a `repo:image_tag` line.
+3. The image tag matches what you expect `CD - Prod` to deploy — the trigger workflow passes it through as-is and does not validate that the tag exists as a release or image.
+
 ## Workflow URLs
 
 ### Create Application Repository
@@ -865,6 +1069,14 @@ The workflow should not create duplicate releases.
 ### Create and Publish Release Notes
 
 <https://github.com/saghosh8/release-automation/blob/main/.github/workflows/publish-release-notes.yml>
+
+### Trigger CI Pipeline
+
+<https://github.com/saghosh8/release-automation/blob/saghosh8-patch-6/.github/workflows/prod_ci.yml> (pending merge to `main`)
+
+### Trigger CD - Prod Pipeline
+
+<https://github.com/saghosh8/release-automation/blob/saghosh8-patch-6/.github/workflows/prod_cd.yml> (pending merge to `main`)
 
 ### Repository
 
@@ -914,6 +1126,8 @@ release/SG_RELEASE_1.0.0
         ↓
 Application changes
         ↓
+Trigger CI Pipeline (prod_ci.yml)
+        ↓
 Update input_files/prod_Old_tag.txt
         ↓
 Validate release branch
@@ -937,4 +1151,8 @@ Generate release notes
 Publish GitHub Release
         ↓
 Verify release
+        ↓
+Update input_files/prod_New_tag.txt
+        ↓
+Trigger CD - Prod Pipeline (prod_cd.yml)
 ```
