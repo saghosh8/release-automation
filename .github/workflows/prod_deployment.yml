@@ -172,15 +172,15 @@ jobs:
 
             gh workflow run "CD - Prod" \
               --repo "$REPO_FULL_NAME" \
-              -f "image_tag=$IMAGE_TAG" \
-              -f "environment=prod"
+              --ref "$RELEASE_BRANCH" \
+              -f "release_tag=$IMAGE_TAG"
 
             echo "Workflow trigger request submitted."
             echo "Repository: $REPO_FULL_NAME"
             echo "Workflow  : CD - Prod"
+            echo "Branch    : $RELEASE_BRANCH"
             echo "Inputs    :"
-            echo "  - image_tag: $IMAGE_TAG"
-            echo "  - environment: prod"
+            echo "  - release_tag: $IMAGE_TAG"
 
             echo ""
             echo "############################################################"
