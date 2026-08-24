@@ -56,7 +56,7 @@ The automation handles:
 - Generate release tags containing the release version and short commit SHA
 - Detect existing release tags
 - Prevent an existing tag from pointing to an unexpected commit
-- Identify the previous release tag
+- Identify the previous release tag from a maintained mapping file
 - Compare the previous release against the new release
 - Automatically generate GitHub Release notes
 - Publish GitHub Releases
@@ -72,7 +72,7 @@ The application repository workflow receives one or more repository names.
 
 For example:
 
-```text
+```
 Repositories: application-one,application-two
 ```
 
@@ -90,7 +90,7 @@ The release branch workflow receives a release name, version, and application re
 
 For example:
 
-```text
+```
 Release name: SG_RELEASE
 Version: 1.0.0
 Repositories: application-one,application-two
@@ -98,7 +98,7 @@ Repositories: application-one,application-two
 
 It creates:
 
-```text
+```
 release/SG_RELEASE_1.0.0
 ```
 
@@ -106,21 +106,42 @@ in each target repository.
 
 ### 3. Create and Publish Release Notes
 
-The release publishing workflow receives the release identifier and application repositories.
+The release publishing workflow receives a single **release identifier** input, `release_branch`, formatted as `SG_RELEASE_<version>` (for example `SG_RELEASE_1.0.0`). The `SG_RELEASE_` prefix is required — the workflow validates the input against that exact format and fails if it doesn't match.
 
-For:
+Unlike the other two workflows, this one does **not** take a comma-separated list of repositories as a workflow input. Instead, it reads the list of repositories to process — along with the previous release tag for each one — from a file checked into this repository:
 
-```text
+```
+input_files/prod_Old_tag.txt
+```
+
+Each non-empty, non-comment line has the format:
+
+```
+<repository-name>:<previous-release-tag>
+```
+
+For example:
+
+```
+application-one:0.9.0-release-cfb154b
+application-two:0.8.2-release-1a2b3c4
+```
+
+This file must be kept up to date before each run — any repository missing from it, or with a blank tag, will cause the workflow to fail for that entry.
+
+For the release identifier:
+
+```
 SG_RELEASE_1.0.0
 ```
 
 the workflow resolves the branch:
 
-```text
+```
 release/SG_RELEASE_1.0.0
 ```
 
-It then:
+It then, for each repository listed in `prod_Old_tag.txt`:
 
 1. Resolves the repository to its full `owner/repository` name.
 2. Verifies that the repository exists and is accessible.
@@ -131,16 +152,16 @@ It then:
 7. Checks whether the tag already exists.
 8. Creates the tag if required.
 9. Verifies that an existing tag points to the expected commit.
-10. Identifies the previous release.
-11. Generates release notes from the comparison.
-12. Publishes the GitHub Release.
+10. Validates that the previous release tag (from `prod_Old_tag.txt`) exists.
+11. Compares the previous release against the new release and fails if there are zero commits between them.
+12. Skips release creation if a GitHub Release for the new tag already exists; otherwise generates release notes and publishes the GitHub Release.
 13. Verifies the published release.
 
-If a required step fails, the workflow fails.
+If a required step fails for a repository, the workflow fails.
 
 ## Project Structure
 
-```text
+```
 release-automation/
 ├── .github/
 │   └── workflows/
@@ -148,7 +169,8 @@ release-automation/
 │       ├── create-release-branch.yml
 │       └── publish-release-notes.yml
 ├── input_files/
-│   └── app_config.yaml
+│   ├── app_config.yaml
+│   └── prod_Old_tag.txt
 ├── README.md
 └── LICENSE
 ```
@@ -157,9 +179,7 @@ release-automation/
 
 ### Create Application Repository
 
-Workflow:
-
-[create-app-repos.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-app-repos.yml)
+Workflow: [create-app-repos.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-app-repos.yml)
 
 Purpose:
 
@@ -167,20 +187,20 @@ Creates one or more new application repositories from a shared template, and gen
 
 Trigger:
 
-```yaml
+```
 workflow_dispatch
 ```
 
 Inputs:
 
-| Input | Required | Example | Description |
-|---|---|---|---|
-| `repo_names` | Yes | `application-one,application-two` | Comma-separated repository names to create |
-| `description` | No | `Application repository` | Description applied to each created repository |
+| Input         | Required | Example                           | Description                                    |
+| ------------- | -------- | --------------------------------- | ---------------------------------------------- |
+| `repo_names`  | Yes      | `application-one,application-two` | Comma-separated repository names to create     |
+| `description` | No       | `Application repository`          | Description applied to each created repository |
 
 Example:
 
-```text
+```
 repo_names  = application-three
 description = Billing service
 ```
@@ -197,9 +217,7 @@ Notes:
 
 ### Create Release Branches
 
-Workflow:
-
-[create-release-branch.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-release-branch.yml)
+Workflow: [create-release-branch.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-release-branch.yml)
 
 Purpose:
 
@@ -207,21 +225,21 @@ Creates release branches in one or more application repositories.
 
 Trigger:
 
-```yaml
+```
 workflow_dispatch
 ```
 
 Inputs:
 
-| Input | Required | Example | Description |
-|---|---|---|---|
-| `release_name` | Yes | `SG_RELEASE` | Release identifier |
-| `version` | Yes | `1.0.0` | Release version |
-| `app_repos` | Yes | `application-one,application-two` | Comma-separated application repositories |
+| Input          | Required | Example                           | Description                              |
+| -------------- | -------- | --------------------------------- | ----------------------------------------- |
+| `release_name` | Yes      | `SG_RELEASE`                      | Release identifier                       |
+| `version`      | Yes      | `1.0.0`                           | Release version                          |
+| `app_repos`    | Yes      | `application-one,application-two` | Comma-separated application repositories |
 
 Example:
 
-```text
+```
 release_name = SG_RELEASE
 version      = 1.0.0
 app_repos    = application-one,application-two
@@ -229,51 +247,59 @@ app_repos    = application-one,application-two
 
 Result:
 
-```text
+```
 release/SG_RELEASE_1.0.0
 ```
 
+> Note: this workflow accepts any `release_name` value, but the publishing workflow below currently only accepts release identifiers starting with `SG_RELEASE_`. In practice, use `SG_RELEASE` as the release name if you plan to publish the release with the workflow below.
+
 ### Create and Publish Release Notes
 
-Workflow:
-
-[create-and-publish-release-notes.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/publish-release-notes.yml)
+Workflow: [publish-release-notes.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/publish-release-notes.yml)
 
 Purpose:
 
-Creates the release tag, generates release notes, and publishes the GitHub Release for the specified application repositories.
+Creates the release tag, generates release notes, and publishes the GitHub Release for the application repositories listed in `input_files/prod_Old_tag.txt`.
 
 Trigger:
 
-```yaml
+```
 workflow_dispatch
 ```
 
 Inputs:
 
-| Input | Required | Example | Description |
-|---|---|---|---|
-| `release_branch` | Yes | `SG_RELEASE_1.0.0` | Release identifier used to resolve the release branch |
-| `repositories` | Yes | `application-one,application-two` | Comma-separated application repositories |
+| Input            | Required | Example             | Description                                                                 |
+| ---------------- | -------- | -------------------- | ----------------------------------------------------------------------------|
+| `release_branch` | Yes      | `SG_RELEASE_1.0.0`   | Release identifier, must match `SG_RELEASE_<major>.<minor>.<patch>`         |
+
+The list of repositories to process, and each one's previous release tag, comes from `input_files/prod_Old_tag.txt` — **not** from a workflow input. Update that file before running this workflow. See [Create and Publish Release Notes](#3-create-and-publish-release-notes) above for the file format.
 
 Example:
 
-```text
+```
 release_branch = SG_RELEASE_1.0.0
-repositories   = application-one,application-two
+```
+
+```
+input_files/prod_Old_tag.txt:
+application-one:0.9.0-release-cfb154b
+application-two:0.8.2-release-1a2b3c4
 ```
 
 The workflow converts:
 
-```text
+```
 SG_RELEASE_1.0.0
 ```
 
 to:
 
-```text
+```
 release/SG_RELEASE_1.0.0
 ```
+
+and processes every repository listed in `prod_Old_tag.txt` against that branch.
 
 ## Release Naming Convention
 
@@ -281,13 +307,13 @@ release/SG_RELEASE_1.0.0
 
 Input:
 
-```text
+```
 SG_RELEASE_1.0.0
 ```
 
 Branch:
 
-```text
+```
 release/SG_RELEASE_1.0.0
 ```
 
@@ -295,13 +321,13 @@ release/SG_RELEASE_1.0.0
 
 The semantic version is extracted from the release identifier:
 
-```text
+```
 SG_RELEASE_1.0.0
 ```
 
 becomes:
 
-```text
+```
 1.0.0
 ```
 
@@ -311,7 +337,7 @@ The workflow gets the exact commit at the HEAD of the release branch.
 
 Example:
 
-```text
+```
 Full SHA:
 81269a628a1d3929817439102b65cecd0d1af545
 
@@ -323,13 +349,13 @@ Short SHA:
 
 The release tag format is:
 
-```text
+```
 <version>-release-<short-commit-sha>
 ```
 
 Example:
 
-```text
+```
 1.0.0-release-81269a6
 ```
 
@@ -337,15 +363,15 @@ The tag therefore identifies both the release version and the exact release comm
 
 ## Repository Resolution
 
-Application repositories are supplied by repository name:
+Application repositories are supplied by repository name, e.g.:
 
-```text
+```
 application-two
 ```
 
 The workflow resolves this to the full repository:
 
-```text
+```
 saghosh8/application-two
 ```
 
@@ -353,7 +379,7 @@ and uses the full repository path for API and Git operations.
 
 This avoids attempting to clone an incomplete URL such as:
 
-```text
+```
 https://github.com/application-two.git
 ```
 
@@ -363,13 +389,13 @@ The release publishing workflow expects the release branch to already exist.
 
 For:
 
-```text
+```
 SG_RELEASE_1.0.0
 ```
 
 it checks:
 
-```text
+```
 release/SG_RELEASE_1.0.0
 ```
 
@@ -377,7 +403,7 @@ If the branch does not exist, the workflow fails.
 
 Example:
 
-```text
+```
 Error: Release branch does not exist.
 Repository: saghosh8/application-two
 Branch: release/SG_RELEASE_1.0.0
@@ -391,7 +417,7 @@ Before creating a release, the workflow checks whether the generated tag already
 
 The workflow creates:
 
-```text
+```
 1.0.0-release-81269a6
 ```
 
@@ -403,7 +429,7 @@ The workflow checks that the existing tag points to the same commit as the relea
 
 Expected:
 
-```text
+```
 81269a628a1d3929817439102b65cecd0d1af545
 ```
 
@@ -411,7 +437,7 @@ If the existing tag points to another commit, the workflow fails.
 
 Example:
 
-```text
+```
 Error: Tag already exists but points to a different commit.
 Expected: 81269a628a1d3929817439102b65cecd0d1af545
 Actual:   <different SHA>
@@ -421,23 +447,23 @@ The workflow does not silently move or overwrite an existing tag.
 
 ## Previous Release and Comparison
 
-After the current release tag is available, the workflow identifies the previous release tag and uses it as the starting point for the release comparison.
+The previous release tag for each repository is read from `input_files/prod_Old_tag.txt` rather than being auto-detected, and is used as the starting point for the release comparison.
 
 Example:
 
-```text
-Previous:
+```
+Previous (from prod_Old_tag.txt):
 0.9.0-release-cfb154b
 
 Current:
 1.0.0-release-81269a6
 ```
 
-The changes between the previous and current releases are then used to generate the GitHub Release notes.
+The changes between the previous and current releases are then used to generate the GitHub Release notes. The workflow fails if there are zero commits between the previous and current tags.
 
 ## Release Notes
 
-GitHub generates the release notes from the changes between the previous release and the current release.
+GitHub generates the release notes from the changes between the previous release (from `prod_Old_tag.txt`) and the current release.
 
 The published release contains the generated:
 
@@ -448,7 +474,7 @@ The published release contains the generated:
 
 Example:
 
-```text
+```
 What's Changed
 
 • Update values-prod.yaml by @saghosh8 in #3
@@ -463,19 +489,19 @@ The GitHub Release title is the generated release tag.
 
 Example:
 
-```text
+```
 1.0.0-release-81269a6
 ```
 
 The release is associated with the same tag:
 
-```text
+```
 1.0.0-release-81269a6
 ```
 
 and that tag points to the commit at:
 
-```text
+```
 release/SG_RELEASE_1.0.0
 ```
 
@@ -483,13 +509,13 @@ release/SG_RELEASE_1.0.0
 
 New application repositories are generated from a single file:
 
-```text
+```
 input_files/app_config.yaml
 ```
 
 The file has two top-level sections:
 
-```yaml
+```
 values:
   IMAGE_REPOSITORY: my-registry/my-image
   IMAGE_TAG: "1.0.0"
@@ -515,11 +541,11 @@ files:
 - **`values`** — settings shared by every repository created in a run (image, ports, replica counts, ingress, HPA). `APP_NAME` is intentionally not set here; it is injected automatically from the repository name being created.
 - **`files`** — the template. Each entry's `path` and `content` may reference any key from `values` using `${KEY_NAME}` placeholders, plus three keys the workflow derives automatically:
 
-| Placeholder | Derived from `APP_NAME` (repository name) | Example (`billing-service`) |
-|---|---|---|
-| `${JAVA_PACKAGE}` | dots, no hyphens | `com.example.billingservice` |
-| `${JAVA_PACKAGE_PATH}` | same, as a folder path | `com/example/billingservice` |
-| `${JAVA_CLASS_NAME}` | PascalCase + `Application` suffix | `BillingServiceApplication` |
+| Placeholder            | Derived from `APP_NAME` (repository name) | Example (`billing-service`)  |
+| ---------------------- | ----------------------------------------- | ----------------------------- |
+| `${JAVA_PACKAGE}`      | dots, no hyphens                          | `com.example.billingservice` |
+| `${JAVA_PACKAGE_PATH}` | same, as a folder path                    | `com/example/billingservice` |
+| `${JAVA_CLASS_NAME}`   | PascalCase + `Application` suffix         | `BillingServiceApplication`  |
 
 This derivation exists because Java package and class names cannot contain hyphens, while repository, Helm chart, and Maven artifact names commonly do.
 
@@ -537,7 +563,7 @@ The generated repository includes:
 
 The workflows use:
 
-```text
+```
 RELEASE_AUTOMATION_TOKEN
 ```
 
@@ -545,7 +571,7 @@ Store this as a GitHub Actions secret.
 
 Go to:
 
-```text
+```
 Repository
 → Settings
 → Secrets and variables
@@ -554,7 +580,7 @@ Repository
 
 Create:
 
-```text
+```
 RELEASE_AUTOMATION_TOKEN
 ```
 
@@ -566,7 +592,7 @@ Do not hard-code the token in a YAML file.
 
 Assume the application repository is:
 
-```text
+```
 saghosh8/application-two
 ```
 
@@ -574,13 +600,13 @@ saghosh8/application-two
 
 Run:
 
-```text
+```
 Create Application Repository
 ```
 
 Inputs:
 
-```text
+```
 repo_names:  application-two
 description: Application repository
 ```
@@ -591,13 +617,13 @@ The workflow creates `saghosh8/application-two` with a generated Spring Boot + H
 
 Run:
 
-```text
+```
 Create Release Branches
 ```
 
 Inputs:
 
-```text
+```
 Release name: SG_RELEASE
 Version:      1.0.0
 Repository:   application-two
@@ -605,7 +631,7 @@ Repository:   application-two
 
 The workflow creates:
 
-```text
+```
 release/SG_RELEASE_1.0.0
 ```
 
@@ -615,70 +641,87 @@ Changes are committed to the release branch.
 
 The branch eventually points to:
 
-```text
+```
 81269a628a1d3929817439102b65cecd0d1af545
 ```
 
 Short SHA:
 
-```text
+```
 81269a6
 ```
 
-### Step 3 — Publish the release
+### Step 3 — Update the previous-tag mapping file
+
+Before publishing, make sure `input_files/prod_Old_tag.txt` in this repository contains an up-to-date line for the app, for example:
+
+```
+application-two:0.9.0-release-cfb154b
+```
+
+### Step 4 — Publish the release
 
 Run:
 
-```text
+```
 Create and Publish Release Notes
 ```
 
 Inputs:
 
-```text
+```
 Release branch: SG_RELEASE_1.0.0
-Repository:     application-two
 ```
 
-### Step 4 — Tag
+The workflow processes every repository listed in `prod_Old_tag.txt`, including `application-two`.
+
+### Step 5 — Tag
 
 The workflow creates or validates:
 
-```text
+```
 1.0.0-release-81269a6
 ```
 
-### Step 5 — Generate release notes
+### Step 6 — Generate release notes
 
-The workflow compares the previous release against:
+The workflow compares the previous release (`application-two:0.9.0-release-cfb154b` from `prod_Old_tag.txt`) against:
 
-```text
+```
 1.0.0-release-81269a6
 ```
 
 and generates the GitHub Release notes.
 
-### Step 6 — Publish
+### Step 7 — Publish
 
 The GitHub Release is published using:
 
-```text
+```
 1.0.0-release-81269a6
 ```
 
 ## Multi-Repository Example
 
-Multiple repositories can be supplied to either the creation, release branch, or release publishing workflows:
+Multiple repositories can be supplied to the creation and release-branch workflows as a comma-separated list:
 
-```text
+```
 application-one,application-two,application-three
+```
+
+For the publishing workflow, multiple repositories are instead supplied as multiple lines in `input_files/prod_Old_tag.txt`:
+
+```
+application-one:0.9.0-release-abc0000
+application-two:0.9.0-release-cfb154b
+application-three:0.9.0-release-def0000
 ```
 
 Each repository is processed independently.
 
 Example (release branch and publish flow):
 
-```text
+```
 application-one
     ↓
 release/SG_RELEASE_1.0.0
@@ -712,7 +755,7 @@ The workflows are intentionally fail-fast.
 
 They use:
 
-```bash
+```
 set -euo pipefail
 ```
 
@@ -720,6 +763,8 @@ The workflow fails for conditions such as:
 
 - Target application repository already exists (repository creation workflow)
 - `app_config.yaml` is missing, malformed, or missing a required value
+- `release_branch` input does not match `SG_RELEASE_<major>.<minor>.<patch>` (publishing workflow)
+- `input_files/prod_Old_tag.txt` is missing, empty, or missing an entry/tag for a repository (publishing workflow)
 - Repository does not exist
 - Repository cannot be accessed
 - Release branch does not exist
@@ -727,8 +772,8 @@ The workflow fails for conditions such as:
 - Commit SHA cannot be resolved
 - Tag creation fails
 - Existing tag points to a different commit
-- Previous release cannot be determined
-- Release comparison fails
+- Old (previous) tag from `prod_Old_tag.txt` does not exist in the repository
+- Zero commits between the previous and new release
 - Release note generation fails
 - GitHub Release creation fails
 - GitHub Release verification fails
@@ -758,6 +803,18 @@ The creation workflow refuses to modify an existing repository. Choose a differe
 
 If this occurs partway through a multi-repository creation run, confirm the "Stage input files" step ran before the repository loop and that `input_files/app_config.yaml` exists in the automation repository at the commit being run.
 
+### `release_branch` Input Rejected
+
+The publishing workflow only accepts release identifiers of the form `SG_RELEASE_<major>.<minor>.<patch>` (e.g. `SG_RELEASE_1.0.0`). Any other prefix or format will fail validation before any repository is touched.
+
+### `prod_Old_tag.txt` Errors
+
+Verify:
+
+1. `input_files/prod_Old_tag.txt` exists and is not empty.
+2. Every repository you expect to publish has a `repo:old_tag` line.
+3. The `old_tag` value on each line actually exists as a tag in that repository — the workflow validates this and fails if it doesn't.
+
 ### Repository Not Found
 
 Verify:
@@ -771,13 +828,13 @@ Verify:
 
 For input:
 
-```text
+```
 SG_RELEASE_1.0.0
 ```
 
 the expected branch is:
 
-```text
+```
 release/SG_RELEASE_1.0.0
 ```
 
@@ -799,26 +856,26 @@ The workflow should not create duplicate releases.
 
 ### Create Application Repository
 
-https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-app-repos.yml
+<https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-app-repos.yml>
 
 ### Create Release Branches
 
-https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-release-branch.yml
+<https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-release-branch.yml>
 
 ### Create and Publish Release Notes
 
-https://github.com/saghosh8/release-automation/blob/main/.github/workflows/publish-release-notes.yml
+<https://github.com/saghosh8/release-automation/blob/main/.github/workflows/publish-release-notes.yml>
 
 ### Repository
 
-https://github.com/saghosh8/release-automation
+<https://github.com/saghosh8/release-automation>
 
 ## Contributing
 
 1. Fork the repository.
 2. Create a feature branch.
 
-```bash
+```
 git checkout -b feature/improvement
 ```
 
@@ -826,13 +883,13 @@ git checkout -b feature/improvement
 4. Test the workflows.
 5. Commit the changes.
 
-```bash
+```
 git commit -m "Add release automation improvement"
 ```
 
 6. Push the branch.
 
-```bash
+```
 git push origin feature/improvement
 ```
 
@@ -846,7 +903,7 @@ See the `LICENSE` file for details.
 
 ## Release Flow Summary
 
-```text
+```
 Create Application Repository
         ↓
 New repo: application-two
@@ -856,6 +913,8 @@ Create Release Branch
 release/SG_RELEASE_1.0.0
         ↓
 Application changes
+        ↓
+Update input_files/prod_Old_tag.txt
         ↓
 Validate release branch
         ↓
@@ -869,7 +928,7 @@ Generate release tag
         ↓
 Create or validate tag
         ↓
-Find previous release
+Read previous release from prod_Old_tag.txt
         ↓
 Compare releases
         ↓
