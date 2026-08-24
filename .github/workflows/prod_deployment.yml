@@ -1,0 +1,188 @@
+name: Trigger CD - Prod Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_branch:
+        description: "Release branch name, e.g. release/SG_RELEASE_1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  trigger-cd-prod:
+    name: Trigger CD - Prod
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ==========================================================
+      # 1. Validate inputs
+      # ==========================================================
+      - name: Validate input
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RELEASE_BRANCH="${{ inputs.release_branch }}"
+
+          echo "Release branch: $RELEASE_BRANCH"
+
+          if [[ -z "$RELEASE_BRANCH" ]]; then
+            echo "::error::Release branch input cannot be empty."
+            exit 1
+          fi
+
+          echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_ENV"
+          echo "INPUT_FILE=input_files/prod_cd_details.txt" >> "$GITHUB_ENV"
+
+
+      # ==========================================================
+      # 2. Checkout repository to access input file
+      # ==========================================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # ==========================================================
+      # 3. Validate input file exists
+      # ==========================================================
+      - name: Validate input file
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          INPUT_FILE="${{ env.INPUT_FILE }}"
+
+          if [[ ! -f "$INPUT_FILE" ]]; then
+            echo "::error::Input file not found."
+            echo "::error::File: $INPUT_FILE"
+            exit 1
+          fi
+
+          if [[ ! -s "$INPUT_FILE" ]]; then
+            echo "::error::Input file is empty."
+            echo "::error::File: $INPUT_FILE"
+            exit 1
+          fi
+
+          echo "Input file exists and is not empty."
+          echo ""
+          echo "Contents:"
+          cat "$INPUT_FILE"
+
+
+      # ==========================================================
+      # 4. Parse input file and trigger pipelines
+      # ==========================================================
+      - name: Trigger CD - Prod pipelines
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }}
+          INPUT_FILE: input_files/prod_cd_details.txt
+        run: |
+          set -euo pipefail
+
+          RELEASE_BRANCH="$RELEASE_BRANCH"
+          INPUT_FILE="$INPUT_FILE"
+
+          echo "Parsing input file..."
+          echo ""
+
+          while IFS=':' read -r REPO_NAME VERSION; do
+
+            # Trim whitespace
+            REPO_NAME="$(echo "$REPO_NAME" | xargs)"
+            VERSION="$(echo "$VERSION" | xargs)"
+
+            # Skip empty lines and comments
+            if [[ -z "$REPO_NAME" ]] || [[ "$REPO_NAME" =~ ^# ]]; then
+              continue
+            fi
+
+            if [[ -z "$VERSION" ]]; then
+              echo "::error::Version not specified for repository: $REPO_NAME"
+              exit 1
+            fi
+
+            echo "############################################################"
+            echo "Processing repository: $REPO_NAME"
+            echo "Version              : $VERSION"
+            echo "Release branch       : $RELEASE_BRANCH"
+            echo "############################################################"
+
+
+            # ====================================================
+            # Resolve repository
+            # ====================================================
+            echo ""
+            echo "Resolving repository..."
+
+            REPO_FULL_NAME=$(gh repo view "$REPO_NAME" \
+              --json nameWithOwner \
+              --jq '.nameWithOwner') || {
+                echo "::error::Repository does not exist or token has no access."
+                echo "::error::Repository: $REPO_NAME"
+                exit 1
+              }
+
+            if [[ -z "$REPO_FULL_NAME" || "$REPO_FULL_NAME" == "null" ]]; then
+              echo "::error::Could not resolve repository."
+              exit 1
+            fi
+
+            echo "Repository: $REPO_FULL_NAME"
+
+
+            # ====================================================
+            # Verify CD - Prod workflow exists
+            # ====================================================
+            echo ""
+            echo "Verifying CD - Prod workflow..."
+
+            WORKFLOW_FOUND=$(gh workflow list \
+              --repo "$REPO_FULL_NAME" \
+              --all \
+              --json name \
+              --jq '.[] | select(.name == "CD - Prod") | .name' || true)
+
+            if [[ -z "$WORKFLOW_FOUND" ]]; then
+              echo "::error::CD - Prod workflow not found."
+              echo "::error::Repository: $REPO_FULL_NAME"
+              exit 1
+            fi
+
+            echo "CD - Prod workflow found."
+
+
+            # ====================================================
+            # Trigger CD - Prod workflow
+            # ====================================================
+            echo ""
+            echo "Triggering CD - Prod workflow..."
+
+            gh workflow run "CD - Prod" \
+              --repo "$REPO_FULL_NAME" \
+              -f "release_branch=$RELEASE_BRANCH" \
+              -f "version=$VERSION"
+
+            echo "Workflow trigger request submitted."
+            echo "Repository: $REPO_FULL_NAME"
+            echo "Workflow  : CD - Prod"
+            echo "Inputs    :"
+            echo "  - release_branch: $RELEASE_BRANCH"
+            echo "  - version: $VERSION"
+
+            echo ""
+            echo "############################################################"
+            echo "TRIGGER SUCCESSFUL"
+            echo "############################################################"
+            echo ""
+
+          done < "$INPUT_FILE"
+
+          echo "All pipelines triggered successfully."
