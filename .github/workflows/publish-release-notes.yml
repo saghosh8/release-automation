@@ -3,18 +3,19 @@ name: Create and Publish Release Notes
 on:
   workflow_dispatch:
     inputs:
+    
       release_branch:
         description: "Release branch name, e.g. SG_RELEASE_1.0.0"
         required: true
         type: string
 
-      repositories:
-        description: "Application repository name(s), comma-separated"
-        required: true
-        type: string
-
       old_tag:
         description: "Previous release tag, e.g. 1.0.0-release-abc1234"
+        required: true
+        type: string
+        
+      repositories:
+        description: "Application repository name(s), comma-separated"
         required: true
         type: string
 
