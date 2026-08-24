@@ -98,26 +98,26 @@ jobs:
           echo "Parsing input file..."
           echo ""
 
-          while IFS=':' read -r REPO_NAME VERSION; do
+          while IFS=':' read -r REPO_NAME IMAGE_TAG; do
 
             # Trim whitespace
             REPO_NAME="$(echo "$REPO_NAME" | xargs)"
-            VERSION="$(echo "$VERSION" | xargs)"
+            IMAGE_TAG="$(echo "$IMAGE_TAG" | xargs)"
 
             # Skip empty lines and comments
             if [[ -z "$REPO_NAME" ]] || [[ "$REPO_NAME" =~ ^# ]]; then
               continue
             fi
 
-            if [[ -z "$VERSION" ]]; then
-              echo "::error::Version not specified for repository: $REPO_NAME"
+            if [[ -z "$IMAGE_TAG" ]]; then
+              echo "::error::Image tag not specified for repository: $REPO_NAME"
               exit 1
             fi
 
             echo "############################################################"
             echo "Processing repository: $REPO_NAME"
-            echo "Version              : $VERSION"
-            echo "Release branch       : $RELEASE_BRANCH"
+            echo "Image tag            : $IMAGE_TAG"
+            echo "Environment          : prod"
             echo "############################################################"
 
 
@@ -172,15 +172,15 @@ jobs:
 
             gh workflow run "CD - Prod" \
               --repo "$REPO_FULL_NAME" \
-              -f "release_branch=$RELEASE_BRANCH" \
-              -f "version=$VERSION"
+              -f "image_tag=$IMAGE_TAG" \
+              -f "environment=prod"
 
             echo "Workflow trigger request submitted."
             echo "Repository: $REPO_FULL_NAME"
             echo "Workflow  : CD - Prod"
             echo "Inputs    :"
-            echo "  - release_branch: $RELEASE_BRANCH"
-            echo "  - version: $VERSION"
+            echo "  - image_tag: $IMAGE_TAG"
+            echo "  - environment: prod"
 
             echo ""
             echo "############################################################"
