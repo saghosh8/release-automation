@@ -67,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          INPUT_FILE="input_files/prod_Old_version.txt"
+          INPUT_FILE="input_files/prod_Old_tag.txt"
 
           if [[ ! -f "$INPUT_FILE" ]]; then
             echo "::error::Input file not found: $INPUT_FILE"
@@ -101,7 +101,7 @@ jobs:
 
           RELEASE_BRANCH="${{ env.RELEASE_BRANCH }}"
           VERSION="${{ env.VERSION }}"
-          INPUT_FILE="input_files/prod_Old_version.txt"
+          INPUT_FILE="input_files/prod_Old_tag.txt"
 
           while IFS=':' read -r REPO OLD_TAG; do
 
