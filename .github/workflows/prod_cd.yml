@@ -37,7 +37,7 @@ jobs:
           fi
 
           echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_ENV"
-          echo "INPUT_FILE=input_files/prod_New_Version.txt" >> "$GITHUB_ENV"
+          echo "INPUT_FILE=input_files/prod_New_tag.txt" >> "$GITHUB_ENV"
 
 
       # ==========================================================
@@ -83,7 +83,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }}
-          INPUT_FILE: input_files/prod_New_version.txt
+          INPUT_FILE: input_files/prod_New_tag.txt
         run: |
           set -euo pipefail
 

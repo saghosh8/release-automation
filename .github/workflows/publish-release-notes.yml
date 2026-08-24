@@ -3,6 +3,7 @@ name: Create and Publish Release Notes
 on:
   workflow_dispatch:
     inputs:
+    
       release_branch:
         description: "Release branch name, e.g. SG_RELEASE_1.0.0"
         required: true
@@ -19,7 +20,13 @@ jobs:
     steps:
 
       # ==========================================================
-      # 1. Validate inputs
+      # 1. Checkout
+      # ==========================================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ==========================================================
+      # 2. Validate input
       # ==========================================================
       - name: Validate input
         shell: bash
@@ -46,7 +53,6 @@ jobs:
 
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_ENV"
-          echo "INPUT_FILE=input_files/prod_Old_version.txt" >> "$GITHUB_ENV"
 
           echo ""
           echo "Version        : $VERSION"
@@ -54,42 +60,32 @@ jobs:
 
 
       # ==========================================================
-      # 2. Checkout repository to access input file
-      # ==========================================================
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-
-      # ==========================================================
-      # 3. Validate input file exists
+      # 3. Validate input file
       # ==========================================================
       - name: Validate input file
         shell: bash
         run: |
           set -euo pipefail
 
-          INPUT_FILE="${{ env.INPUT_FILE }}"
+          INPUT_FILE="input_files/prod_Old_tag.txt"
 
           if [[ ! -f "$INPUT_FILE" ]]; then
-            echo "::error::Input file not found."
-            echo "::error::File: $INPUT_FILE"
+            echo "::error::Input file not found: $INPUT_FILE"
             exit 1
           fi
 
           if [[ ! -s "$INPUT_FILE" ]]; then
-            echo "::error::Input file is empty."
-            echo "::error::File: $INPUT_FILE"
+            echo "::error::Input file is empty: $INPUT_FILE"
             exit 1
           fi
 
-          echo "Input file exists and is not empty."
-          echo ""
+          echo "Input file found."
           echo "Contents:"
           cat "$INPUT_FILE"
 
 
       # ==========================================================
-      # 4. Process repositories
+      # 4. Process repositories from file
       # ==========================================================
       - name: Process repositories
         shell: bash
@@ -105,38 +101,29 @@ jobs:
 
           RELEASE_BRANCH="${{ env.RELEASE_BRANCH }}"
           VERSION="${{ env.VERSION }}"
-          INPUT_FILE="${{ env.INPUT_FILE }}"
+          INPUT_FILE="input_files/prod_Old_tag.txt"
 
-          echo "Parsing input file..."
-          echo ""
-
-          while IFS=':' read -r REPO_NAME OLD_TAG VERSION_INPUT; do
+          while IFS=':' read -r REPO OLD_TAG; do
 
             # Trim whitespace
-            REPO_NAME="$(echo "$REPO_NAME" | xargs)"
+            REPO="$(echo "$REPO" | xargs)"
             OLD_TAG="$(echo "$OLD_TAG" | xargs)"
-            VERSION_INPUT="$(echo "$VERSION_INPUT" | xargs)"
 
             # Skip empty lines and comments
-            if [[ -z "$REPO_NAME" ]] || [[ "$REPO_NAME" =~ ^# ]]; then
+            if [[ -z "$REPO" ]] || [[ "$REPO" =~ ^# ]]; then
               continue
             fi
 
             if [[ -z "$OLD_TAG" ]]; then
-              echo "::error::Old tag not specified for repository: $REPO_NAME"
-              exit 1
-            fi
-
-            if [[ -z "$VERSION_INPUT" ]]; then
-              echo "::error::Version not specified for repository: $REPO_NAME"
+              echo "::error::Old tag not specified for repository: $REPO"
               exit 1
             fi
 
             echo ""
             echo "############################################################"
-            echo "Processing repository: $REPO_NAME"
+            echo "Processing repository: $REPO"
             echo "Release branch       : $RELEASE_BRANCH"
-            echo "Version              : $VERSION_INPUT"
+            echo "Version              : $VERSION"
             echo "Old tag              : $OLD_TAG"
             echo "############################################################"
 
@@ -147,11 +134,11 @@ jobs:
             echo ""
             echo "Resolving repository..."
 
-            REPO_FULL_NAME=$(gh repo view "$REPO_NAME" \
+            REPO_FULL_NAME=$(gh repo view "$REPO" \
               --json nameWithOwner \
               --jq '.nameWithOwner') || {
                 echo "::error::Repository does not exist or token has no access."
-                echo "::error::Repository: $REPO_NAME"
+                echo "::error::Repository: $REPO"
                 exit 1
               }
 
@@ -212,7 +199,7 @@ jobs:
             # ====================================================
             # Create release tag name
             # ====================================================
-            NEW_TAG="${VERSION_INPUT}-release-${SHORT_COMMIT_SHA}"
+            NEW_TAG="${VERSION}-release-${SHORT_COMMIT_SHA}"
 
             echo ""
             echo "Release tag: $NEW_TAG"
@@ -423,7 +410,7 @@ jobs:
             echo "############################################################"
             echo "Repository       : $REPO_FULL_NAME"
             echo "Release branch   : $RELEASE_BRANCH"
-            echo "Version          : $VERSION_INPUT"
+            echo "Version          : $VERSION"
             echo "Commit SHA       : $BRANCH_SHA"
             echo "Short commit SHA : $SHORT_COMMIT_SHA"
             echo "Previous tag     : $OLD_TAG"
