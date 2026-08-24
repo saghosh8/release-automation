@@ -3,19 +3,8 @@ name: Create and Publish Release Notes
 on:
   workflow_dispatch:
     inputs:
-    
       release_branch:
         description: "Release branch name, e.g. SG_RELEASE_1.0.0"
-        required: true
-        type: string
-
-      old_tag:
-        description: "Previous release tag, e.g. 1.0.0-release-abc1234"
-        required: true
-        type: string
-        
-      repositories:
-        description: "Application repository name(s), comma-separated"
         required: true
         type: string
 
@@ -38,25 +27,11 @@ jobs:
           set -euo pipefail
 
           RELEASE_INPUT="${{ inputs.release_branch }}"
-          REPOSITORIES="${{ inputs.repositories }}"
-          OLD_TAG="${{ inputs.old_tag }}"
 
           echo "Release input: $RELEASE_INPUT"
-          echo "Repositories : $REPOSITORIES"
-          echo "Old tag      : $OLD_TAG"
 
           if [[ -z "$RELEASE_INPUT" ]]; then
             echo "::error::Release branch input cannot be empty."
-            exit 1
-          fi
-
-          if [[ -z "$REPOSITORIES" ]]; then
-            echo "::error::Repository input cannot be empty."
-            exit 1
-          fi
-
-          if [[ -z "$OLD_TAG" ]]; then
-            echo "::error::Old tag input cannot be empty."
             exit 1
           fi
 
@@ -66,18 +41,12 @@ jobs:
             exit 1
           fi
 
-          if [[ ! "$OLD_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-release-[0-9a-fA-F]+$ ]]; then
-            echo "::error::Invalid old tag format."
-            echo "::error::Expected format: X.Y.Z-release-XXXXXXX"
-            exit 1
-          fi
-
           VERSION="${RELEASE_INPUT#SG_RELEASE_}"
           RELEASE_BRANCH="release/${RELEASE_INPUT}"
 
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_ENV"
-          echo "OLD_TAG=$OLD_TAG" >> "$GITHUB_ENV"
+          echo "INPUT_FILE=input_files/prod_old_tag.txt" >> "$GITHUB_ENV"
 
           echo ""
           echo "Version        : $VERSION"
@@ -85,13 +54,47 @@ jobs:
 
 
       # ==========================================================
-      # 2. Process repositories
+      # 2. Checkout repository to access input file
+      # ==========================================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # ==========================================================
+      # 3. Validate input file exists
+      # ==========================================================
+      - name: Validate input file
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          INPUT_FILE="${{ env.INPUT_FILE }}"
+
+          if [[ ! -f "$INPUT_FILE" ]]; then
+            echo "::error::Input file not found."
+            echo "::error::File: $INPUT_FILE"
+            exit 1
+          fi
+
+          if [[ ! -s "$INPUT_FILE" ]]; then
+            echo "::error::Input file is empty."
+            echo "::error::File: $INPUT_FILE"
+            exit 1
+          fi
+
+          echo "Input file exists and is not empty."
+          echo ""
+          echo "Contents:"
+          cat "$INPUT_FILE"
+
+
+      # ==========================================================
+      # 4. Process repositories
       # ==========================================================
       - name: Process repositories
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
-          REPOSITORIES: ${{ inputs.repositories }}
         run: |
           set -euo pipefail
 
@@ -100,37 +103,55 @@ jobs:
             exit 1
           fi
 
-          IFS=',' read -ra REPO_ARRAY <<< "$REPOSITORIES"
+          RELEASE_BRANCH="${{ env.RELEASE_BRANCH }}"
+          VERSION="${{ env.VERSION }}"
+          INPUT_FILE="${{ env.INPUT_FILE }}"
 
-          for REPO in "${REPO_ARRAY[@]}"; do
+          echo "Parsing input file..."
+          echo ""
 
-            REPO="$(echo "$REPO" | xargs)"
+          while IFS=':' read -r REPO_NAME OLD_TAG VERSION_INPUT; do
 
-            if [[ -z "$REPO" ]]; then
-              echo "::error::Repository name cannot be empty."
+            # Trim whitespace
+            REPO_NAME="$(echo "$REPO_NAME" | xargs)"
+            OLD_TAG="$(echo "$OLD_TAG" | xargs)"
+            VERSION_INPUT="$(echo "$VERSION_INPUT" | xargs)"
+
+            # Skip empty lines and comments
+            if [[ -z "$REPO_NAME" ]] || [[ "$REPO_NAME" =~ ^# ]]; then
+              continue
+            fi
+
+            if [[ -z "$OLD_TAG" ]]; then
+              echo "::error::Old tag not specified for repository: $REPO_NAME"
+              exit 1
+            fi
+
+            if [[ -z "$VERSION_INPUT" ]]; then
+              echo "::error::Version not specified for repository: $REPO_NAME"
               exit 1
             fi
 
             echo ""
             echo "############################################################"
-            echo "Processing repository: $REPO"
+            echo "Processing repository: $REPO_NAME"
             echo "Release branch       : $RELEASE_BRANCH"
-            echo "Version              : $VERSION"
+            echo "Version              : $VERSION_INPUT"
             echo "Old tag              : $OLD_TAG"
             echo "############################################################"
 
 
             # ====================================================
-            # 3. Resolve repository
+            # Resolve repository
             # ====================================================
             echo ""
             echo "Resolving repository..."
 
-            REPO_FULL_NAME=$(gh repo view "$REPO" \
+            REPO_FULL_NAME=$(gh repo view "$REPO_NAME" \
               --json nameWithOwner \
               --jq '.nameWithOwner') || {
                 echo "::error::Repository does not exist or token has no access."
-                echo "::error::Repository: $REPO"
+                echo "::error::Repository: $REPO_NAME"
                 exit 1
               }
 
@@ -143,7 +164,7 @@ jobs:
 
 
             # ====================================================
-            # 4. Build authenticated repository URL
+            # Build authenticated repository URL
             # ====================================================
             REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
 
@@ -152,7 +173,7 @@ jobs:
 
 
             # ====================================================
-            # 5. Check release branch
+            # Check release branch
             # ====================================================
             echo ""
             echo "Checking release branch..."
@@ -189,23 +210,16 @@ jobs:
 
 
             # ====================================================
-            # 6. Create release tag name
-            #
-            # Example:
-            # 1.0.0-release-81269a6
+            # Create release tag name
             # ====================================================
-            NEW_TAG="${VERSION}-release-${SHORT_COMMIT_SHA}"
+            NEW_TAG="${VERSION_INPUT}-release-${SHORT_COMMIT_SHA}"
 
             echo ""
             echo "Release tag: $NEW_TAG"
 
 
             # ====================================================
-            # 7. Check whether tag exists
-            #
-            # IMPORTANT:
-            # git ls-remote returns EMPTY when tag doesn't exist.
-            # It does NOT return GitHub API error JSON.
+            # Check whether tag exists
             # ====================================================
             echo ""
             echo "Checking whether release tag already exists..."
@@ -242,7 +256,7 @@ jobs:
 
 
               # ==================================================
-              # 8. Create tag
+              # Create tag
               # ==================================================
               gh api \
                 --method POST \
@@ -254,7 +268,7 @@ jobs:
 
 
               # ==================================================
-              # 9. Verify tag was created
+              # Verify tag was created
               # ==================================================
               echo ""
               echo "Verifying tag creation..."
@@ -288,7 +302,7 @@ jobs:
 
 
             # ====================================================
-            # 10. Validate old tag exists
+            # Validate old tag exists
             # ====================================================
             echo ""
             echo "Validating old tag..."
@@ -313,7 +327,7 @@ jobs:
 
 
             # ====================================================
-            # 11. Compare releases
+            # Compare releases
             # ====================================================
             echo ""
             echo "Comparing releases..."
@@ -342,7 +356,7 @@ jobs:
 
 
             # ====================================================
-            # 12. Check whether GitHub Release exists
+            # Check whether GitHub Release exists
             # ====================================================
             echo ""
             echo "Checking GitHub Release..."
@@ -353,52 +367,55 @@ jobs:
               --jq '.tagName' 2>/dev/null || true)
 
             if [[ "$EXISTING_RELEASE" == "$NEW_TAG" ]]; then
-              echo "::error::GitHub Release already exists."
-              echo "::error::Release: $NEW_TAG"
-              exit 1
-            fi
+              echo "GitHub Release already exists."
+              echo "Release: $NEW_TAG"
+              echo "Skipping release creation."
+            else
+
+              # ====================================================
+              # Generate and publish release notes
+              # ====================================================
+              echo ""
+              echo "Generating release notes..."
+              echo "Publishing GitHub Release..."
+
+              gh release create "$NEW_TAG" \
+                --repo "$REPO_FULL_NAME" \
+                --target "$BRANCH_SHA" \
+                --title "$NEW_TAG" \
+                --generate-notes \
+                --notes-start-tag "$OLD_TAG" \
+                --verify-tag
 
 
-            # ====================================================
-            # 13. Generate and publish release notes
-            # ====================================================
-            echo ""
-            echo "Generating release notes..."
-            echo "Publishing GitHub Release..."
+              # ====================================================
+              # Verify release
+              # ====================================================
+              echo ""
+              echo "Verifying GitHub Release..."
 
-            gh release create "$NEW_TAG" \
-              --repo "$REPO_FULL_NAME" \
-              --target "$BRANCH_SHA" \
-              --title "$NEW_TAG" \
-              --generate-notes \
-              --notes-start-tag "$OLD_TAG" \
-              --verify-tag
+              RELEASE_TAG=$(gh release view "$NEW_TAG" \
+                --repo "$REPO_FULL_NAME" \
+                --json tagName \
+                --jq '.tagName') || {
+                  echo "::error::Unable to verify GitHub Release."
+                  exit 1
+                }
 
-
-            # ====================================================
-            # 14. Verify release
-            # ====================================================
-            echo ""
-            echo "Verifying GitHub Release..."
-
-            RELEASE_TAG=$(gh release view "$NEW_TAG" \
-              --repo "$REPO_FULL_NAME" \
-              --json tagName \
-              --jq '.tagName') || {
-                echo "::error::Unable to verify GitHub Release."
+              if [[ "$RELEASE_TAG" != "$NEW_TAG" ]]; then
+                echo "::error::GitHub Release verification failed."
+                echo "::error::Expected: $NEW_TAG"
+                echo "::error::Actual: $RELEASE_TAG"
                 exit 1
-              }
+              fi
 
-            if [[ "$RELEASE_TAG" != "$NEW_TAG" ]]; then
-              echo "::error::GitHub Release verification failed."
-              echo "::error::Expected: $NEW_TAG"
-              echo "::error::Actual: $RELEASE_TAG"
-              exit 1
+              echo "GitHub Release successfully created."
+
             fi
 
 
             # ====================================================
-            # 15. Success
+            # Success
             # ====================================================
             echo ""
             echo "############################################################"
@@ -406,12 +423,15 @@ jobs:
             echo "############################################################"
             echo "Repository       : $REPO_FULL_NAME"
             echo "Release branch   : $RELEASE_BRANCH"
-            echo "Version          : $VERSION"
+            echo "Version          : $VERSION_INPUT"
             echo "Commit SHA       : $BRANCH_SHA"
             echo "Short commit SHA : $SHORT_COMMIT_SHA"
             echo "Previous tag     : $OLD_TAG"
             echo "New tag          : $NEW_TAG"
             echo "Release notes    : Published"
             echo "############################################################"
+            echo ""
 
-          done
+          done < "$INPUT_FILE"
+
+          echo "All repositories processed successfully."
