@@ -44,8 +44,6 @@ The automation handles:
 - Triggering downstream CD - Prod pipelines in application repositories
 - Failure handling
 
-> **Status note:** the CI and CD - Prod triggering workflows described below (`prod_ci.yml` and `prod_cd.yml`) are currently on the `saghosh8-patch-6` branch and are not yet merged into `main`. Once merged, they will be available from the `main` branch like the other workflows.
-
 ## Features
 
 - Create one or more new application repositories in a single workflow run
