@@ -46,7 +46,7 @@ jobs:
 
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_ENV"
-          echo "INPUT_FILE=input_files/prod_Old_version.txt" >> "$GITHUB_ENV"
+          echo "INPUT_FILE=input_files/prod_old_tag.txt" >> "$GITHUB_ENV"
 
           echo ""
           echo "Version        : $VERSION"
@@ -110,12 +110,11 @@ jobs:
           echo "Parsing input file..."
           echo ""
 
-          while IFS=':' read -r REPO_NAME OLD_TAG VERSION_INPUT; do
+          while IFS=':' read -r REPO_NAME OLD_TAG; do
 
             # Trim whitespace
             REPO_NAME="$(echo "$REPO_NAME" | xargs)"
             OLD_TAG="$(echo "$OLD_TAG" | xargs)"
-            VERSION_INPUT="$(echo "$VERSION_INPUT" | xargs)"
 
             # Skip empty lines and comments
             if [[ -z "$REPO_NAME" ]] || [[ "$REPO_NAME" =~ ^# ]]; then
@@ -127,16 +126,11 @@ jobs:
               exit 1
             fi
 
-            if [[ -z "$VERSION_INPUT" ]]; then
-              echo "::error::Version not specified for repository: $REPO_NAME"
-              exit 1
-            fi
-
             echo ""
             echo "############################################################"
             echo "Processing repository: $REPO_NAME"
             echo "Release branch       : $RELEASE_BRANCH"
-            echo "Version              : $VERSION_INPUT"
+            echo "Version              : $VERSION"
             echo "Old tag              : $OLD_TAG"
             echo "############################################################"
 
@@ -212,7 +206,7 @@ jobs:
             # ====================================================
             # Create release tag name
             # ====================================================
-            NEW_TAG="${VERSION_INPUT}-release-${SHORT_COMMIT_SHA}"
+            NEW_TAG="${VERSION}-release-${SHORT_COMMIT_SHA}"
 
             echo ""
             echo "Release tag: $NEW_TAG"
@@ -423,7 +417,7 @@ jobs:
             echo "############################################################"
             echo "Repository       : $REPO_FULL_NAME"
             echo "Release branch   : $RELEASE_BRANCH"
-            echo "Version          : $VERSION_INPUT"
+            echo "Version          : $VERSION"
             echo "Commit SHA       : $BRANCH_SHA"
             echo "Short commit SHA : $SHORT_COMMIT_SHA"
             echo "Previous tag     : $OLD_TAG"
@@ -433,5 +427,3 @@ jobs:
             echo ""
 
           done < "$INPUT_FILE"
-
-          echo "All repositories processed successfully."
