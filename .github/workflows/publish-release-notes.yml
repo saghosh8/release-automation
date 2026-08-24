@@ -46,7 +46,7 @@ jobs:
 
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_ENV"
-          echo "INPUT_FILE=input_files/prod_old_tag.txt" >> "$GITHUB_ENV"
+          echo "INPUT_FILE=input_files/prod_Old_version.txt" >> "$GITHUB_ENV"
 
           echo ""
           echo "Version        : $VERSION"
