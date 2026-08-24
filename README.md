@@ -85,7 +85,7 @@ Repositories: application-one,application-two
 For each name, it:
 
 1. Verifies the repository does not already exist (fails if it does, to avoid overwriting anything).
-2. Creates a new private GitHub repository.
+2. Creates a new public GitHub repository under the `saghosh8` account.
 3. Generates the project files from `input_files/app_config.yaml` — a Spring Boot application skeleton and a matching Helm chart.
 4. Derives `APP_NAME`, the Java package, and the Java class name from the repository name itself, so every repository gets correctly named, compilable Java code.
 5. Commits and pushes the generated files to the new repository's `main` branch.
@@ -223,12 +223,12 @@ release-automation/
 │       ├── create-app-repos.yml
 │       ├── create-release-branch.yml
 │       ├── publish-release-notes.yml
-│       ├── prod_ci.yml            (pending merge, branch saghosh8-patch-6)
-│       └── prod_cd.yml            (pending merge, branch saghosh8-patch-6)
+│       ├── prod_ci.yml
+│       └── prod_cd.yml
 ├── input_files/
 │   ├── app_config.yaml
 │   ├── prod_Old_tag.txt
-│   └── prod_New_tag.txt           (pending merge, branch saghosh8-patch-6)
+│   └── prod_New_tag.txt
 ├── README.md
 └── LICENSE
 ```
@@ -238,6 +238,8 @@ release-automation/
 ### Create Application Repository
 
 Workflow: [create-app-repos.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-app-repos.yml)
+
+[![Run Create Application Repository](https://img.shields.io/badge/▶-Run%20workflow-2ea44f)](https://github.com/saghosh8/release-automation/actions/workflows/create-app-repos.yml)
 
 Purpose:
 
@@ -265,10 +267,11 @@ description = Billing service
 
 Result:
 
-A new private repository named `application-three` is created, containing a generated Spring Boot application (package `com.example.applicationthree`, class `ApplicationThreeApplication`) and a Helm chart at `helm/application-three/`.
+A new public repository named `application-three` is created under the `saghosh8` account, containing a generated Spring Boot application (package `com.example.applicationthree`, class `ApplicationThreeApplication`) and a Helm chart at `helm/application-three/`.
 
 Notes:
 
+- The repository owner is always `${GITHUB_REPOSITORY_OWNER}` — i.e. whoever owns this `release-automation` repository (`saghosh8`). It is not a workflow input, so repositories can only ever be created under that account.
 - The workflow fails without creating anything if a target repository already exists, to avoid overwriting it.
 - `APP_NAME` is never read from configuration — it is always taken from the repository name being created, so every repository in a multi-repository run gets its own correct name, Java package, and Helm chart, even though they share the same `app_config.yaml`.
 - `input_files/app_config.yaml` is staged to a temporary location before the loop starts, since each repository's working directory is wiped and rebuilt during generation.
@@ -276,6 +279,8 @@ Notes:
 ### Create Release Branches
 
 Workflow: [create-release-branch.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/create-release-branch.yml)
+
+[![Run Create Release Branches](https://img.shields.io/badge/▶-Run%20workflow-2ea44f)](https://github.com/saghosh8/release-automation/actions/workflows/create-release-branch.yml)
 
 Purpose:
 
@@ -314,6 +319,8 @@ release/SG_RELEASE_1.0.0
 ### Create and Publish Release Notes
 
 Workflow: [publish-release-notes.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/publish-release-notes.yml)
+
+[![Run Create and Publish Release Notes](https://img.shields.io/badge/▶-Run%20workflow-2ea44f)](https://github.com/saghosh8/release-automation/actions/workflows/publish-release-notes.yml)
 
 Purpose:
 
@@ -361,9 +368,9 @@ and processes every repository listed in `prod_Old_tag.txt` against that branch.
 
 ### Trigger CI Pipeline
 
-> Currently on branch `saghosh8-patch-6`, not yet merged to `main`.
-
 Workflow: [prod_ci.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/prod_ci.yml)
+
+[![Run Trigger CI Pipeline](https://img.shields.io/badge/▶-Run%20workflow-2ea44f)](https://github.com/saghosh8/release-automation/actions/workflows/prod_ci.yml)
 
 Purpose:
 
@@ -401,9 +408,9 @@ Notes:
 
 ### Trigger CD - Prod Pipeline
 
-> Currently on branch `saghosh8-patch-6`, not yet merged to `main`.
-
 Workflow: [prod_cd.yml](https://github.com/saghosh8/release-automation/blob/main/.github/workflows/prod_cd.yml)
+
+[![Run Trigger CD - Prod Pipeline](https://img.shields.io/badge/▶-Run%20workflow-2ea44f)](https://github.com/saghosh8/release-automation/actions/workflows/prod_cd.yml)
 
 Purpose:
 
@@ -656,8 +663,6 @@ release/SG_RELEASE_1.0.0
 ```
 
 ## Triggering CI and CD - Prod Pipelines
-
-> The workflows in this section (`prod_ci.yml`, `prod_cd.yml`) are currently on branch `saghosh8-patch-6` and pending merge to `main`.
 
 Once a release branch exists and has commits, the CI and CD - Prod trigger workflows let this repository kick off pipelines in the application repositories remotely, instead of requiring someone to go trigger them by hand in each repo.
 
@@ -1070,11 +1075,11 @@ Verify:
 
 ### Trigger CI Pipeline
 
-<https://github.com/saghosh8/release-automation/blob/saghosh8-patch-6/.github/workflows/prod_ci.yml> (pending merge to `main`)
+<https://github.com/saghosh8/release-automation/blob/main/.github/workflows/prod_ci.yml>
 
 ### Trigger CD - Prod Pipeline
 
-<https://github.com/saghosh8/release-automation/blob/saghosh8-patch-6/.github/workflows/prod_cd.yml> (pending merge to `main`)
+<https://github.com/saghosh8/release-automation/blob/main/.github/workflows/prod_cd.yml>
 
 ### Repository
 
