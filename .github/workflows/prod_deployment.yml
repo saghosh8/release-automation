@@ -81,11 +81,16 @@ jobs:
       - name: Trigger CD - Prod pipelines
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }}
           INPUT_FILE: input_files/prod_cd_details.txt
         run: |
           set -euo pipefail
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::RELEASE_AUTOMATION_TOKEN is not configured."
+            exit 1
+          fi
 
           RELEASE_BRANCH="$RELEASE_BRANCH"
           INPUT_FILE="$INPUT_FILE"
