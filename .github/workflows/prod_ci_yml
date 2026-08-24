@@ -1,0 +1,185 @@
+name: Trigger CI Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch name to run CI from, e.g. release/SG_RELEASE_1.0.0"
+        required: true
+        type: string
+      
+      repositories:
+        description: "Application repository name(s), comma-separated"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  trigger-ci:
+    name: Trigger CI
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ==========================================================
+      # 1. Validate inputs
+      # ==========================================================
+      - name: Validate input
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BRANCH="${{ inputs.branch }}"
+          REPOSITORIES="${{ inputs.repositories }}"
+
+          echo "Branch      : $BRANCH"
+          echo "Repositories: $REPOSITORIES"
+
+          if [[ -z "$BRANCH" ]]; then
+            echo "::error::Branch input cannot be empty."
+            exit 1
+          fi
+
+          if [[ -z "$REPOSITORIES" ]]; then
+            echo "::error::Repositories input cannot be empty."
+            exit 1
+          fi
+
+          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
+          echo "REPOSITORIES=$REPOSITORIES" >> "$GITHUB_ENV"
+
+
+      # ==========================================================
+      # 2. Trigger CI pipelines
+      # ==========================================================
+      - name: Trigger CI pipelines
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+          BRANCH: ${{ env.BRANCH }}
+          REPOSITORIES: ${{ env.REPOSITORIES }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::RELEASE_AUTOMATION_TOKEN is not configured."
+            exit 1
+          fi
+
+          BRANCH="$BRANCH"
+          REPOSITORIES="$REPOSITORIES"
+
+          echo "Parsing repositories..."
+          echo ""
+
+          IFS=',' read -ra REPO_ARRAY <<< "$REPOSITORIES"
+
+          for REPO in "${REPO_ARRAY[@]}"; do
+
+            REPO="$(echo "$REPO" | xargs)"
+
+            if [[ -z "$REPO" ]]; then
+              echo "::error::Repository name cannot be empty."
+              exit 1
+            fi
+
+            echo "############################################################"
+            echo "Processing repository: $REPO"
+            echo "Branch               : $BRANCH"
+            echo "############################################################"
+
+
+            # ====================================================
+            # Resolve repository
+            # ====================================================
+            echo ""
+            echo "Resolving repository..."
+
+            REPO_FULL_NAME=$(gh repo view "$REPO" \
+              --json nameWithOwner \
+              --jq '.nameWithOwner') || {
+                echo "::error::Repository does not exist or token has no access."
+                echo "::error::Repository: $REPO"
+                exit 1
+              }
+
+            if [[ -z "$REPO_FULL_NAME" || "$REPO_FULL_NAME" == "null" ]]; then
+              echo "::error::Could not resolve repository."
+              exit 1
+            fi
+
+            echo "Repository: $REPO_FULL_NAME"
+
+
+            # ====================================================
+            # Verify branch exists
+            # ====================================================
+            echo ""
+            echo "Verifying branch..."
+
+            BRANCH_RESULT=$(git ls-remote \
+              "https://x-access-token:${GH_TOKEN}@github.com/${REPO_FULL_NAME}.git" \
+              "refs/heads/${BRANCH}") || {
+                echo "::error::Unable to access repository."
+                echo "::error::Repository: $REPO_FULL_NAME"
+                exit 1
+              }
+
+            if [[ -z "$BRANCH_RESULT" ]]; then
+              echo "::error::Branch does not exist."
+              echo "::error::Repository: $REPO_FULL_NAME"
+              echo "::error::Branch: $BRANCH"
+              exit 1
+            fi
+
+            echo "Branch exists."
+
+
+            # ====================================================
+            # Verify CI workflow exists
+            # ====================================================
+            echo ""
+            echo "Verifying CI workflow..."
+
+            WORKFLOW_FOUND=$(gh workflow list \
+              --repo "$REPO_FULL_NAME" \
+              --all \
+              --json name \
+              --jq '.[] | select(.name == "CI") | .name' || true)
+
+            if [[ -z "$WORKFLOW_FOUND" ]]; then
+              echo "::error::CI workflow not found."
+              echo "::error::Repository: $REPO_FULL_NAME"
+              exit 1
+            fi
+
+            echo "CI workflow found."
+
+
+            # ====================================================
+            # Trigger CI workflow
+            # ====================================================
+            echo ""
+            echo "Triggering CI workflow..."
+
+            gh workflow run "CI" \
+              --repo "$REPO_FULL_NAME" \
+              --ref "$BRANCH"
+
+            echo "Workflow trigger request submitted."
+            echo "Repository: $REPO_FULL_NAME"
+            echo "Workflow  : CI"
+            echo "Branch    : $BRANCH"
+
+            echo ""
+            echo "############################################################"
+            echo "TRIGGER SUCCESSFUL"
+            echo "############################################################"
+            echo ""
+
+          done
+
+          echo "All CI pipelines triggered successfully."
