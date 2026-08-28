@@ -29,7 +29,8 @@ def get_workflow_id(app_repo, workflow_file):
         resp = requests.get(url, headers=HEADERS, timeout=10)
         resp.raise_for_status()
         return resp.json().get("id")
-    except Exception:
+    except Exception as e:
+        print(f"Error getting workflow ID: {e}")
         return None
 
 
@@ -69,6 +70,7 @@ def get_dev_deployments(app_repo):
     """
     workflow_id = get_workflow_id(app_repo, "cd_dev.yml")
     if not workflow_id:
+        print(f"Could not find workflow ID for {app_repo}")
         return []
 
     url = f"https://api.github.com/repos/{OWNER}/{app_repo}/actions/workflows/{workflow_id}/runs"
@@ -81,34 +83,41 @@ def get_dev_deployments(app_repo):
         )
         resp.raise_for_status()
         runs = resp.json().get("workflow_runs", [])
+        print(f"Found {len(runs)} successful runs for {app_repo}")
         
         deployments = []
         for run in runs:
             # Fetch full run details to get the summary/body
             run_url = run.get("url")
+            summary = ""
+            
             if run_url:
                 try:
                     run_detail_resp = requests.get(run_url, headers=HEADERS, timeout=10)
                     run_detail_resp.raise_for_status()
                     run_detail = run_detail_resp.json()
                     summary = run_detail.get("body") or ""
-                except Exception:
-                    summary = ""
-            else:
-                summary = ""
+                    print(f"Run {run.get('id')} summary length: {len(summary)}")
+                except Exception as e:
+                    print(f"Error fetching run details: {e}")
             
             details = extract_deployment_details(summary)
             
             if details:
+                print(f"Extracted details: tag={details['tag']}, branch={details['branch']}")
                 deployments.append({
                     "tag": details["tag"],
                     "branch": details["branch"],
                     "deployed_at": run.get("run_started_at") or run.get("created_at"),
                     "run_url": run.get("html_url"),
                 })
+            else:
+                print(f"No details found in summary for run {run.get('id')}")
         
+        print(f"Total deployments extracted for {app_repo}: {len(deployments)}")
         return deployments
-    except Exception:
+    except Exception as e:
+        print(f"Error fetching deployments for {app_repo}: {e}")
         return []
 
 
