@@ -28,10 +28,17 @@ ENV_WORKFLOWS = {
     "PROD": "CD - Prod",
 }
 
-# Used to pull the deployed tag back out of a run's title (see note in
+# Used to pull the deployed tag back out of a run's summary (see note in
 # get_latest_deployment below). Matches the same tag convention used
 # elsewhere in this script: <version>-release-<sha>
 TAG_PATTERN = re.compile(r"[\w.]+-release-[0-9a-fA-F]+")
+
+# Maps environment name to the section header in the workflow run summary
+SUMMARY_SECTIONS = {
+    "Dev": "Deploy to Dev summary",
+    "UAT": "Deploy to UAT summary",
+    "PROD": "Deploy to Prod summary",
+}
 
 
 def get_releases(app_repo, count=5):
@@ -89,31 +96,49 @@ def get_workflow_id(app_repo, workflow_name):
     return _workflow_id_cache.get(cache_key)
 
 
-def get_latest_deployment(app_repo, workflow_name):
+def extract_tag_from_summary(summary_text, env_name):
+    """
+    Extract the tag from a workflow run summary section.
+    
+    Looks for the section header [Deploy to <env> summary] and extracts
+    the first tag matching the pattern <version>-release-<sha>.
+    """
+    if not summary_text or not env_name:
+        return None
+    
+    section_header = SUMMARY_SECTIONS.get(env_name)
+    if not section_header:
+        return None
+    
+    # Look for the section header (case-insensitive, with or without brackets)
+    pattern = rf"\[?{re.escape(section_header)}\]?.*?(?:\n|$)(.*?)(?=\[|$)"
+    match = re.search(pattern, summary_text, re.IGNORECASE | re.DOTALL)
+    
+    if match:
+        section_content = match.group(1)
+        tag_match = TAG_PATTERN.search(section_content)
+        if tag_match:
+            return tag_match.group(0)
+    
+    return None
+
+
+def get_latest_deployment(app_repo, workflow_name, env_name=None):
     """
     Return the tag deployed by the most recent *successful* run of the given
     CD workflow (e.g. "CD - Dev"), or None if there is no successful run.
 
-    IMPORTANT: The GitHub REST API does not expose workflow_dispatch input
-    values on a workflow run object, so the deployed tag is recovered from
-    the run's title instead. For this to work, each CD workflow needs a
-    run-name that includes the tag input, for example:
-
-        name: CD - Dev
-        run-name: "CD - Dev: ${{ inputs.tag }}"
-        on:
-          workflow_dispatch:
-            inputs:
-              tag:
-                description: "Tag to deploy"
-                required: true
-                type: string
-        ...
-
-    If that isn't there yet, add it to CD - Dev / CD - UAT / CD - Prod in
-    each app repo. The input can be named anything - this script just
-    searches the run title for something matching the <version>-release-<sha>
-    tag pattern used by this repo's releases.
+    The deployed tag is extracted from the workflow run summary. For this to work,
+    each CD workflow should include a step that creates a job summary with a section
+    like:
+    
+        [Deploy to Dev summary]
+        Deployed tag: v1.0.0-release-abc123
+        
+    The env_name parameter maps to the summary section:
+    - "Dev" -> "[Deploy to Dev summary]"
+    - "UAT" -> "[Deploy to UAT summary]"
+    - "PROD" -> "[Deploy to Prod summary]"
     """
     workflow_id = get_workflow_id(app_repo, workflow_name)
     if not workflow_id:
@@ -136,9 +161,15 @@ def get_latest_deployment(app_repo, workflow_name):
     except Exception:
         return None
 
-    title = run.get("display_title") or run.get("name") or ""
-    match = TAG_PATTERN.search(title)
-    tag = match.group(0) if match else (title.strip() or "-")
+    # Try to extract tag from summary if env_name is provided
+    tag = None
+    if env_name:
+        summary_text = run.get("body") or ""
+        tag = extract_tag_from_summary(summary_text, env_name)
+    
+    # Fallback: if no tag found in summary, return None or indicate missing data
+    if not tag:
+        tag = "-"
 
     return {
         "tag": tag,
@@ -294,10 +325,9 @@ if __name__ == "__main__":
     cards = ""
 
     for i, app in enumerate(APPS):
-        env_results = {
-            env_name: get_latest_deployment(app, workflow_name)
-            for env_name, workflow_name in ENV_WORKFLOWS.items()
-        }
+        env_results = {}
+        for env_name, workflow_name in ENV_WORKFLOWS.items():
+            env_results[env_name] = get_latest_deployment(app, workflow_name, env_name)
         env_cards += build_env_card(app, env_results)
 
         releases = get_releases(app)
