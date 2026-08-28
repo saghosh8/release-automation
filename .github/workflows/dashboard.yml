@@ -28,6 +28,8 @@ jobs:
         run: pip install requests
 
       - name: Generate dashboard HTML
+        env:
+          OWNER: ${{ github.repository_owner }}
         run: python generate_dashboard.py
 
       - name: Upload Pages artifact

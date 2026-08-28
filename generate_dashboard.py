@@ -1,67 +1,104 @@
+import os
 import requests
 from datetime import datetime, timezone
 
-OWNER = "saghosh8"
-REPO = "release-automation"
+OWNER = os.environ.get("OWNER", "saghosh8")
 
-WORKFLOWS = {
-    "Onboarding": "create-app-repos.yml",
-    "Release Branch": "create-release-branch.yml",
-    "CI & Tagging": "prod_ci.yml",
-    "Release Notes": "publish-release-notes.yml",
-    "Prod Deployment": "prod_cd.yml",
-}
-
-STATUS_COLOR = {
-    "success": "#2ea44f",
-    "failure": "#d73a49",
-    "in_progress": "#dbab09",
-    "queued": "#dbab09",
-    "cancelled": "#8b949e",
-    "unknown": "#8b949e",
-}
+# Edit this list to match your real application repo names
+APPS = ["application-one", "application-two"]
 
 
-def get_latest_run(workflow_file):
-    url = f"https://api.github.com/repos/{OWNER}/{REPO}/actions/workflows/{workflow_file}/runs"
+def get_releases(app_repo, count=5):
+    """Fetch the last `count` releases for an application repo."""
+    url = f"https://api.github.com/repos/{OWNER}/{app_repo}/releases"
     try:
-        resp = requests.get(url, params={"per_page": 1}, timeout=10)
+        resp = requests.get(url, params={"per_page": count}, timeout=10)
         resp.raise_for_status()
-        runs = resp.json().get("workflow_runs", [])
-        if not runs:
-            return {"status": "unknown", "html_url": None, "branch": None}
-        run = runs[0]
-        status = run["conclusion"] or run["status"]
-        return {
-            "status": status,
-            "html_url": run["html_url"],
-            "branch": run["head_branch"],
-        }
+        releases = resp.json()
+        return [
+            {
+                "version": r["tag_name"],
+                "branch": r["target_commitish"],
+                "published_at": r["published_at"],
+            }
+            for r in releases
+        ]
     except Exception:
-        return {"status": "unknown", "html_url": None, "branch": None}
+        return []
 
 
-def build_html(results):
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+def fmt_date(iso_str):
+    if not iso_str:
+        return "-"
+    try:
+        return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+    except Exception:
+        return iso_str
 
-    cards = ""
-    for stage, data in results.items():
-        color = STATUS_COLOR.get(data["status"], "#8b949e")
-        branch = f"<p class='branch'>Branch: {data['branch']}</p>" if data["branch"] else ""
-        link = f"<a href='{data['html_url']}' target='_blank'>View run</a>" if data["html_url"] else ""
-        cards += f"""
+
+def build_app_card(app_repo, releases, idx):
+    if not releases:
+        return f"""
         <div class="card">
-          <h3>{stage}</h3>
-          <div class="status" style="color:{color}">&#9679; {data['status']}</div>
-          {branch}
-          {link}
+          <h2>{app_repo}</h2>
+          <p class="empty">No releases found.</p>
         </div>
         """
 
-    success_count = sum(1 for r in results.values() if r["status"] == "success")
-    failure_count = sum(1 for r in results.values() if r["status"] == "failure")
-    other_count = len(results) - success_count - failure_count
+    current = releases[0]
+    previous = releases[1] if len(releases) > 1 else None
 
+    previous_html = (
+        f"""<div class="row"><span class="label">Previous version</span>
+             <span class="value">{previous['version']}</span></div>
+           <div class="row"><span class="label">Previous release branch</span>
+             <span class="value">{previous['branch']}</span></div>"""
+        if previous
+        else '<div class="row"><span class="label">Previous version</span><span class="value">-</span></div>'
+    )
+
+    history_rows = "".join(
+        f"""<tr>
+              <td>{r['version']}</td>
+              <td>{r['branch']}</td>
+              <td>{fmt_date(r['published_at'])}</td>
+            </tr>"""
+        for r in releases
+    )
+
+    panel_id = f"history-{idx}"
+
+    return f"""
+    <div class="card">
+      <h2>{app_repo}</h2>
+
+      <div class="row"><span class="label">Current version</span>
+        <span class="value badge">{current['version']}</span></div>
+      <div class="row"><span class="label">Current release branch</span>
+        <span class="value">{current['branch']}</span></div>
+
+      {previous_html}
+
+      <button class="toggle-btn" onclick="document.getElementById('{panel_id}').classList.toggle('open')">
+        Check previous versions
+      </button>
+
+      <div id="{panel_id}" class="history-panel">
+        <table>
+          <thead>
+            <tr><th>Version</th><th>Release branch</th><th>Published</th></tr>
+          </thead>
+          <tbody>
+            {history_rows}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    """
+
+
+def build_html(cards_html):
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -70,32 +107,32 @@ def build_html(results):
 <style>
   body {{ font-family: -apple-system, Arial, sans-serif; background: #0d1117; color: #c9d1d9; margin: 0; padding: 2rem; }}
   h1 {{ font-size: 1.5rem; margin-bottom: 0.2rem; }}
+  h2 {{ font-size: 1.1rem; margin: 0 0 1rem; }}
   .caption {{ color: #8b949e; margin-bottom: 2rem; }}
-  .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }}
-  .card {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1rem; }}
-  .card h3 {{ margin: 0 0 0.5rem; font-size: 0.95rem; }}
-  .status {{ font-size: 1.1rem; font-weight: 600; margin-bottom: 0.4rem; }}
-  .branch {{ font-size: 0.8rem; color: #8b949e; margin: 0.2rem 0; }}
-  a {{ color: #58a6ff; font-size: 0.85rem; text-decoration: none; }}
-  a:hover {{ text-decoration: underline; }}
-  .summary {{ margin-top: 2rem; display: flex; gap: 2rem; }}
-  .metric {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1rem 1.5rem; }}
-  .metric .num {{ font-size: 1.5rem; font-weight: 600; }}
-  .metric .label {{ font-size: 0.8rem; color: #8b949e; }}
+  .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }}
+  .card {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.25rem; }}
+  .row {{ display: flex; justify-content: space-between; padding: 0.4rem 0; border-bottom: 1px solid #21262d; font-size: 0.9rem; }}
+  .row:last-of-type {{ border-bottom: none; }}
+  .label {{ color: #8b949e; }}
+  .value {{ font-family: monospace; }}
+  .badge {{ background: #2ea44f22; color: #3fb950; padding: 2px 8px; border-radius: 4px; }}
+  .toggle-btn {{ margin-top: 1rem; background: transparent; border: 1px solid #30363d; color: #58a6ff;
+                 padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }}
+  .toggle-btn:hover {{ background: #21262d; }}
+  .history-panel {{ display: none; margin-top: 1rem; }}
+  .history-panel.open {{ display: block; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 0.85rem; }}
+  th, td {{ text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #21262d; }}
+  th {{ color: #8b949e; font-weight: 500; }}
+  td {{ font-family: monospace; }}
+  .empty {{ color: #8b949e; font-size: 0.9rem; }}
 </style>
 </head>
 <body>
   <h1>Release Automation Dashboard</h1>
-  <p class="caption">Repo: {OWNER}/{REPO} &middot; Last refreshed: {now}</p>
-
+  <p class="caption">Last refreshed: {now}</p>
   <div class="grid">
-    {cards}
-  </div>
-
-  <div class="summary">
-    <div class="metric"><div class="num" style="color:#2ea44f">{success_count}</div><div class="label">Passing</div></div>
-    <div class="metric"><div class="num" style="color:#d73a49">{failure_count}</div><div class="label">Failing</div></div>
-    <div class="metric"><div class="num" style="color:#dbab09">{other_count}</div><div class="label">In progress / unknown</div></div>
+    {cards_html}
   </div>
 </body>
 </html>
@@ -103,8 +140,12 @@ def build_html(results):
 
 
 if __name__ == "__main__":
-    results = {stage: get_latest_run(wf) for stage, wf in WORKFLOWS.items()}
-    html = build_html(results)
+    cards = ""
+    for i, app in enumerate(APPS):
+        releases = get_releases(app)
+        cards += build_app_card(app, releases, i)
+
+    html = build_html(cards)
     with open("index.html", "w") as f:
         f.write(html)
     print("index.html generated")
