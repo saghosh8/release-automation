@@ -1,9 +1,14 @@
 import os
 import html
 import requests
+import re
 from datetime import datetime, timezone
 
 OWNER = os.environ.get("OWNER", "saghosh8")
+
+# Recommended for GitHub Actions API access.
+# Fine-grained token permission: Actions -> Read-only.
+# Set GITHUB_TOKEN in the environment before running this script.
 
 # Edit this list to match your real application repo names
 APPS = ["application-one", "application-two"]
@@ -12,32 +17,178 @@ APPS = ["application-one", "application-two"]
 RELEASE_PREFIX = os.environ.get("RELEASE_PREFIX", "SG_RELEASE")
 
 
-def get_releases(app_repo, count=5):
-    """Fetch the last `count` releases for an application repo."""
-    url = f"https://api.github.com/repos/{OWNER}/{app_repo}/releases"
+def github_headers():
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2026-03-10",
+    }
+
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    return headers
+
+
+def github_get(url, params=None, timeout=20):
+    response = requests.get(
+        url,
+        params=params,
+        headers=github_headers(),
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    return response
+
+
+def parse_release_from_log(log_text):
+    """
+    cd_prod.yml prints:
+    Deploying release: 3.0.0-release-b1cdd44 (version 3.0.0, commit b1cdd44)
+    """
+    pattern = re.compile(
+        r"Deploying release:\s*(?P<tag>\S+)\s+"
+        r"\(version\s+(?P<version>[^,]+),\s*commit\s+(?P<sha>[^)]+)\)"
+    )
+
+    match = pattern.search(log_text)
+    if not match:
+        return None
+
+    return {
+        "version": match.group("version").strip(),
+        "tag": match.group("tag").strip(),
+        "sha": match.group("sha").strip(),
+    }
+
+
+def get_job_logs(app_repo, job_id):
+    """Download the Deploy to Prod job logs from GitHub Actions."""
+    url = f"https://api.github.com/repos/{OWNER}/{app_repo}/actions/jobs/{job_id}/logs"
 
     try:
-        resp = requests.get(url, params={"per_page": count}, timeout=10)
-        resp.raise_for_status()
-        releases = resp.json()
+        response = requests.get(
+            url,
+            headers=github_headers(),
+            timeout=30,
+            allow_redirects=True,
+        )
+        response.raise_for_status()
 
-        return [
-            {
-                "version": r["tag_name"],
-                "branch": derive_branch(r["tag_name"]),
-                "published_at": r["published_at"],
-            }
-            for r in releases
-        ]
-    except Exception:
+        import io
+        import zipfile
+
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            chunks = []
+            for name in archive.namelist():
+                with archive.open(name) as f:
+                    chunks.append(f.read().decode("utf-8", errors="replace"))
+
+        return "\n".join(chunks)
+
+    except Exception as exc:
+        print(f"Could not read logs for {app_repo}, job {job_id}: {exc}")
+        return ""
+
+
+def get_deploy_job(app_repo, run_id):
+    """Find the Deploy to Prod job for a workflow run."""
+    url = (
+        f"https://api.github.com/repos/{OWNER}/{app_repo}"
+        f"/actions/runs/{run_id}/jobs"
+    )
+
+    try:
+        response = github_get(
+            url,
+            params={"filter": "latest", "per_page": 100},
+        )
+
+        jobs = response.json().get("jobs", [])
+
+        for job in jobs:
+            if job.get("name", "").strip().lower() == "deploy to prod":
+                return job
+
+        for job in jobs:
+            if "deploy to prod" in job.get("name", "").strip().lower():
+                return job
+
+    except Exception as exc:
+        print(f"Could not get jobs for {app_repo}, run {run_id}: {exc}")
+
+    return None
+
+
+def get_releases(app_repo, count=5):
+    """
+    Get the latest successful CD - Prod deployments.
+
+    This no longer reads /releases.
+    It reads:
+      cd_prod.yml -> successful workflow run -> Deploy to Prod job -> logs
+
+    The branch comes directly from the workflow run and the release/tag
+    comes from the same production deployment's log output.
+    """
+    url = (
+        f"https://api.github.com/repos/{OWNER}/{app_repo}"
+        f"/actions/workflows/cd_prod.yml/runs"
+    )
+
+    try:
+        response = github_get(
+            url,
+            params={
+                "status": "success",
+                "per_page": max(count * 2, 10),
+            },
+        )
+
+        runs = response.json().get("workflow_runs", [])
+        deployments = []
+
+        for run in runs:
+            if len(deployments) >= count:
+                break
+
+            run_id = run.get("id")
+            if not run_id:
+                continue
+
+            job = get_deploy_job(app_repo, run_id)
+
+            if not job or job.get("conclusion") != "success":
+                continue
+
+            logs = get_job_logs(app_repo, job["id"])
+            release = parse_release_from_log(logs)
+
+            deployments.append({
+                "version": release["version"] if release else "-",
+                "tag": release["tag"] if release else "-",
+                "sha": release["sha"] if release else run.get("head_sha", "")[:7],
+                "branch": run.get("head_branch") or "-",
+                "published_at": run.get("updated_at") or run.get("created_at"),
+                "run_id": run_id,
+                "run_number": run.get("run_number"),
+                "status": run.get("conclusion", "success"),
+                "run_url": run.get("html_url"),
+            })
+
+        return deployments
+
+    except Exception as exc:
+        print(f"Could not read CD - Prod runs for {app_repo}: {exc}")
         return []
 
 
 def derive_branch(tag_name):
-    """Tag format: <version>-release-<short-sha>."""
+    """Compatibility helper; actual branch now comes from the workflow run."""
+    if not tag_name or tag_name == "-":
+        return "-"
     version = tag_name.split("-release-")[0]
     return f"release/{RELEASE_PREFIX}_{version}"
-
 
 def fmt_date(iso_str):
     if not iso_str:
@@ -96,6 +247,7 @@ def build_app_card(app_repo, releases, idx):
         <tr>
             <td><span class="version-pill">{html.escape(r["version"])}</span></td>
             <td class="mono">{html.escape(r["branch"])}</td>
+            <td>#{html.escape(str(r.get("run_number", "-")))}</td>
             <td>{fmt_date(r["published_at"])}</td>
         </tr>
         """
@@ -121,12 +273,17 @@ def build_app_card(app_repo, releases, idx):
                 <span class="branch-icon">⑂</span>
                 <span>{current_branch}</span>
             </div>
+
+            <div class="branch" style="margin-top:8px;">
+                <span class="branch-icon">#</span>
+                <span>{html.escape(current.get("tag", "-"))}</span>
+            </div>
         </div>
 
         <div class="mini-grid">
             {previous_html}
             <div class="mini-stat">
-                <span>Published</span>
+                <span>Prod deployed</span>
                 <strong>{fmt_date(current["published_at"])}</strong>
             </div>
         </div>
@@ -144,7 +301,8 @@ def build_app_card(app_repo, releases, idx):
                         <tr>
                             <th>VERSION</th>
                             <th>RELEASE BRANCH</th>
-                            <th>PUBLISHED</th>
+                            <th>PROD RUN</th>
+                            <th>DEPLOYED</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -673,15 +831,15 @@ def build_html(app_data):
         <div class="brand">
             <div class="brand-icon">↗</div>
             <div>
-                <h1>Release Dashboard</h1>
-                <p>CI/CD release management dashboard</p>
+                <h1>Release Automation</h1>
+                <p>Production deployment dashboard · CD - Prod</p>
             </div>
         </div>
         <div class="refresh">Last refreshed · {now}</div>
     </header>
 
     <section class="hero">
-        <div class="eyebrow">RELEASE OPERATIONS</div>
+        <div class="eyebrow">PRODUCTION RELEASE OPERATIONS</div>
         <h2>Application Release Overview</h2>
         <p>
             Monitor current versions, release branches and recent release
@@ -700,13 +858,13 @@ def build_html(app_data):
             </div>
 
             <div class="stat">
-                <div class="stat-label">Release History</div>
+                <div class="stat-label">Prod Deployments</div>
                 <div class="stat-value">{total_releases}</div>
             </div>
 
             <div class="stat">
-                <div class="stat-label">Branch Prefix</div>
-                <div class="stat-value" style="font-size:1.05rem;">{html.escape(RELEASE_PREFIX)}</div>
+                <div class="stat-label">Production Status</div>
+                <div class="stat-value green" style="font-size:1.05rem;">Healthy</div>
             </div>
         </div>
     </section>
@@ -721,7 +879,7 @@ def build_html(app_data):
     </main>
 
     <div class="footer">
-        Generated automatically from GitHub Releases · {html.escape(OWNER)}
+        Generated automatically from successful GitHub Actions CD - Prod runs · {html.escape(OWNER)}
     </div>
 
 </div>
