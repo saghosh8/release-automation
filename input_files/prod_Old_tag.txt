@@ -1,2 +1,2 @@
-application-one:1.0.0-release-881e26c
-application-two:1.0.0-release-c25012d
+application-two:2.0.0-release-4b78c40
+application-one:2.0.0-release-273b809
