@@ -52,12 +52,22 @@ def extract_deployment_details(summary_text):
     return None
 
 
-def get_run_body(run_url):
-    """Fetch the full run details to get the body/summary."""
+def get_run_summary(app_repo, run_id):
+    """Fetch the job summary from the workflow run's jobs."""
+    url = f"https://api.github.com/repos/{OWNER}/{app_repo}/actions/runs/{run_id}/jobs"
     try:
-        resp = requests.get(run_url, headers=HEADERS, timeout=10)
+        resp = requests.get(url, headers=HEADERS, timeout=10)
         resp.raise_for_status()
-        return resp.json().get("body") or ""
+        jobs = resp.json().get("jobs", [])
+        
+        # Concatenate all job summaries
+        all_summaries = ""
+        for job in jobs:
+            summary = job.get("summary") or ""
+            if summary:
+                all_summaries += summary + "\n"
+        
+        return all_summaries
     except Exception:
         return ""
 
@@ -81,11 +91,11 @@ def get_dev_deployments(app_repo):
         
         deployments = []
         for run in runs:
-            # Fetch full run body to get the summary
-            run_url = run.get("url")
-            body = get_run_body(run_url) if run_url else ""
+            run_id = run.get("id")
+            # Fetch job summary to get the deployment details
+            summary = get_run_summary(app_repo, run_id) if run_id else ""
             
-            details = extract_deployment_details(body)
+            details = extract_deployment_details(summary)
             
             if details:
                 deployments.append({
