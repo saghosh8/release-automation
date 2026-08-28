@@ -17,19 +17,13 @@ HEADERS = {"Accept": "application/vnd.github+json"}
 if GITHUB_TOKEN:
     HEADERS["Authorization"] = f"Bearer {GITHUB_TOKEN}"
 
-# Maps the dashboard environment name -> the workflow file name
-ENV_WORKFLOWS = {
-    "Dev": "cd_dev.yml",
-}
-
-# Used to extract tag from summary: looks for **Deployed Tag:** `tag_value`
-TAG_PATTERN = re.compile(r"\*\*Deployed Tag:\*\*\s*`([^`]+)`")
-BRANCH_PATTERN = re.compile(r"\*\*Branch:\*\*\s*`([^`]+)`")
+# Used to extract tag and branch from the Run details table
+IMAGE_TAG_PATTERN = re.compile(r"image_tag\s*\|\s*(\S+)")
+BRANCH_PATTERN = re.compile(r"branch\s*\|\s*(\S+)")
 
 
 def get_workflow_id(app_repo, workflow_file):
-    """Look up a workflow's numeric id by its file name, cached per repo."""
-    cache_key = (app_repo, workflow_file)
+    """Look up a workflow's numeric id by its file name."""
     url = f"https://api.github.com/repos/{OWNER}/{app_repo}/actions/workflows/{workflow_file}"
     try:
         resp = requests.get(url, headers=HEADERS, timeout=10)
@@ -50,13 +44,13 @@ def fmt_date(iso_str):
 
 def extract_deployment_details(summary_text):
     """
-    Extract tag and branch from the [Deploy to Dev summary] section.
+    Extract image_tag and branch from the Run details table in the summary.
     Returns dict with 'tag' and 'branch' keys, or None if not found.
     """
     if not summary_text:
         return None
     
-    tag_match = TAG_PATTERN.search(summary_text)
+    tag_match = IMAGE_TAG_PATTERN.search(summary_text)
     branch_match = BRANCH_PATTERN.search(summary_text)
     
     if tag_match:
@@ -90,7 +84,19 @@ def get_dev_deployments(app_repo):
         
         deployments = []
         for run in runs:
-            summary = run.get("body") or ""
+            # Fetch full run details to get the summary/body
+            run_url = run.get("url")
+            if run_url:
+                try:
+                    run_detail_resp = requests.get(run_url, headers=HEADERS, timeout=10)
+                    run_detail_resp.raise_for_status()
+                    run_detail = run_detail_resp.json()
+                    summary = run_detail.get("body") or ""
+                except Exception:
+                    summary = ""
+            else:
+                summary = ""
+            
             details = extract_deployment_details(summary)
             
             if details:
