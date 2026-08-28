@@ -673,7 +673,7 @@ def build_html(app_data):
         <div class="brand">
             <div class="brand-icon">↗</div>
             <div>
-                <h1>Release Automation</h1>
+                <h1>Release Dashboard</h1>
                 <p>CI/CD release management dashboard</p>
             </div>
         </div>
