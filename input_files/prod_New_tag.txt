@@ -1,1 +1,1 @@
-application-one:3.0.0-release-b1cdd44
+application-one:3.0.0-release-b9bbdf4
