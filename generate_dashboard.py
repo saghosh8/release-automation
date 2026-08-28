@@ -7,6 +7,9 @@ OWNER = os.environ.get("OWNER", "saghosh8")
 # Edit this list to match your real application repo names
 APPS = ["application-one", "application-two"]
 
+# Edit this to match your release branch prefix (e.g. "SG_RELEASE", "AB_RELEASE", etc.)
+RELEASE_PREFIX = os.environ.get("RELEASE_PREFIX", "SG_RELEASE")
+
 
 def get_releases(app_repo, count=5):
     """Fetch the last `count` releases for an application repo."""
@@ -18,13 +21,19 @@ def get_releases(app_repo, count=5):
         return [
             {
                 "version": r["tag_name"],
-                "branch": r["target_commitish"],
+                "branch": derive_branch(r["tag_name"]),
                 "published_at": r["published_at"],
             }
             for r in releases
         ]
     except Exception:
         return []
+
+
+def derive_branch(tag_name):
+    """Tag format is <version>-release-<short-sha>; branch is release/<RELEASE_PREFIX>_<version>."""
+    version = tag_name.split("-release-")[0]
+    return f"release/{RELEASE_PREFIX}_{version}"
 
 
 def fmt_date(iso_str):
