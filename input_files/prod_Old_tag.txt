@@ -1,2 +1,0 @@
-application-two:2.0.0-release-4b78c40
-application-one:2.0.0-release-273b809
