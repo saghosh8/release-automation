@@ -14,8 +14,8 @@ Scaffold repos → cut release branches → tag & publish releases → fan out C
 <!--
 📸 ADD PIC: a hero banner or GIF here — e.g. a quick screen recording of triggering
 a workflow from the Actions tab, or a screenshot of the live dashboard.
-Drop the image in something like `docs/images/banner.png` and reference it:
-![Release Automation banner](docs/images/banner.png)
+Drop the image in something like `docs/videos/banner.mp4` and reference it:
+![Release Automation banner](docs/videos/banner.mp4)
 -->
 
 </div>
