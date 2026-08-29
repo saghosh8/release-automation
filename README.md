@@ -8,7 +8,15 @@ Scaffold repos → cut release branches → tag & publish releases → fan out C
 
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-workflow--dispatch-2088FF?logo=githubactions&logoColor=white)
 ![Bash](https://img.shields.io/badge/Bash-fail--fast-4EAA25?logo=gnubash&logoColor=white)
+![Pages](https://img.shields.io/badge/GitHub_Pages-live_dashboard-222222?logo=githubpages&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
+
+<!--
+📸 ADD PIC: a hero banner or GIF here — e.g. a quick screen recording of triggering
+a workflow from the Actions tab, or a screenshot of the live dashboard.
+Drop the image in something like `docs/images/banner.png` and reference it:
+![Release Automation banner](docs/images/banner.png)
+-->
 
 </div>
 
@@ -40,10 +48,17 @@ Each box below is its own `workflow_dispatch` job — trigger them manually, in 
 | 3 | [`publish-release-notes.yml`](.github/workflows/publish-release-notes.yml) | Tags the release commit, generates & publishes GitHub Release notes | `release_branch`, `repo_tags` |
 | 4 | [`prod_ci.yml`](.github/workflows/prod_ci.yml) | Remotely triggers the `CI` workflow in each app repo | `branch`, `repositories` |
 | 5 | [`prod_cd.yml`](.github/workflows/prod_cd.yml) | Remotely triggers the `CD - Prod` workflow, per-repo image tag | `release_branch`, `repo_tags` |
+| 6 | [`dashboard.yml`](.github/workflows/dashboard.yml) | Builds a status dashboard and publishes it to GitHub Pages | *(none — runs on a schedule)* |
 
-> 📌 **All five workflows now take repos as plain `workflow_dispatch` inputs — no files to edit or commit before a run.**
+> 📌 **The five release workflows above take repos as plain `workflow_dispatch` inputs — no files to edit or commit before a run.** The dashboard is the odd one out: it runs itself.
 
 ## Quick start
+
+<!--
+📸 ADD PIC: screenshot of the Actions tab → a workflow's "Run workflow" form
+with sample inputs filled in. Great for readers unfamiliar with workflow_dispatch.
+![Run workflow form](docs/images/run-workflow.png)
+-->
 
 ```text
 1. Create the repo(s)
@@ -71,6 +86,41 @@ Each box below is its own `workflow_dispatch` job — trigger them manually, in 
 
 `repo_tags` is always `repo:tag,repo:tag,...` — spaces after commas are fine.
 
+## 📊 Live dashboard
+
+[`dashboard.yml`](.github/workflows/dashboard.yml) keeps a status page published on **GitHub Pages**, no manual trigger needed:
+
+| Trigger | Behavior |
+|---|---|
+| `schedule` | Runs every 15 minutes (`*/15 * * * *`) |
+| `push` to `main` | Rebuilds immediately after any change lands |
+| `workflow_dispatch` | Rebuild on demand from the Actions tab |
+
+What it does:
+
+1. Checks out the repo and sets up Python 3.11.
+2. Runs `generate_dashboard.py` (with `OWNER` set to the repo owner) to render the dashboard as static HTML.
+3. Uploads and deploys that HTML to GitHub Pages via `actions/upload-pages-artifact` + `actions/deploy-pages`.
+
+```mermaid
+flowchart LR
+    S[Every 15 min / push to main / manual] --> G[generate_dashboard.py]
+    G --> P[Upload Pages artifact]
+    P --> D[Deploy to GitHub Pages]
+```
+
+Because it rebuilds on a timer, the dashboard always reflects fresh data pulled via the GitHub API — no one has to remember to refresh it after a release.
+
+<!--
+📸 ADD PIC: screenshot of the live dashboard page (the GitHub Pages URL).
+This is the best spot for it — replace the line below once you have one:
+![Dashboard screenshot](docs/images/dashboard.png)
+-->
+
+> ℹ️ Exact content shown on the dashboard depends on `generate_dashboard.py` (not covered above). If you want that documented here too, share the script and I'll add a "what you'll see" breakdown.
+
+**One-time setup:** enable Pages under *Settings → Pages → Build and deployment → Source: GitHub Actions*, since `dashboard.yml` deploys via the Pages API (`permissions: pages: write`, `id-token: write`) rather than pushing to a `gh-pages` branch.
+
 ## Naming conventions
 
 | Concept | Example |
@@ -89,6 +139,12 @@ The release identifier **must** match `SG_RELEASE_<major>.<minor>.<patch>` — a
    - Access to every target application repo
    - Permission to create new repos under the owning account
 3. Never hard-code the token in a workflow file.
+
+<!--
+📸 ADD PIC: screenshot of Settings → Secrets and variables → Actions,
+showing (redact the value!) that RELEASE_AUTOMATION_TOKEN is configured.
+![Secret configured](docs/images/secret-setup.png)
+-->
 
 <details>
 <summary><strong>Project structure</strong></summary>
