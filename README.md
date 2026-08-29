@@ -50,14 +50,38 @@ Each box below is its own `workflow_dispatch` job — trigger them manually, in 
 
 <table>
 <tr>
-<td align="center"><img src="docs/images/run-create-app-repos.png" width="260"/><br/><sub>1. Create App Repo</sub></td>
-<td align="center"><img src="docs/images/run-create-release-branch.png" width="260"/><br/><sub>2. Create Release Branch</sub></td>
-<td align="center"><img src="docs/images/run-publish-release-notes.png" width="260"/><br/><sub>3. Publish Release Notes</sub></td>
+<td align="center" width="33%">
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/create-app-repos.yml"><img src="docs/images/run-create-app-repos.png" width="260"/></a><br/>
+<sub><strong><a href=".github/workflows/create-app-repos.yml">1. Create App Repo</a></strong></sub><br/>
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/create-app-repos.yml"><img src="https://img.shields.io/badge/▶-Run%20workflow-2ea44f" alt="Run workflow"/></a>
+</td>
+<td align="center" width="33%">
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/create-release-branch.yml"><img src="docs/images/run-create-release-branch.png" width="260"/></a><br/>
+<sub><strong><a href=".github/workflows/create-release-branch.yml">2. Create Release Branch</a></strong></sub><br/>
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/create-release-branch.yml"><img src="https://img.shields.io/badge/▶-Run%20workflow-2ea44f" alt="Run workflow"/></a>
+</td>
+<td align="center" width="33%">
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/publish-release-notes.yml"><img src="docs/images/run-publish-release-notes.png" width="260"/></a><br/>
+<sub><strong><a href=".github/workflows/publish-release-notes.yml">3. Publish Release Notes</a></strong></sub><br/>
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/publish-release-notes.yml"><img src="https://img.shields.io/badge/▶-Run%20workflow-2ea44f" alt="Run workflow"/></a>
+</td>
 </tr>
 <tr>
-<td align="center"><img src="docs/images/run-prod-ci.png" width="260"/><br/><sub>4. Trigger CI</sub></td>
-<td align="center"><img src="docs/images/run-prod-cd.png" width="260"/><br/><sub>5. Trigger CD - Prod</sub></td>
-<td align="center"><img src="docs/images/run-dashboard.png" width="260"/><br/><sub>6. Build Dashboard</sub></td>
+<td align="center" width="33%">
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/prod_ci.yml"><img src="docs/images/run-prod-ci.png" width="260"/></a><br/>
+<sub><strong><a href=".github/workflows/prod_ci.yml">4. Trigger CI</a></strong></sub><br/>
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/prod_ci.yml"><img src="https://img.shields.io/badge/▶-Run%20workflow-2ea44f" alt="Run workflow"/></a>
+</td>
+<td align="center" width="33%">
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/prod_cd.yml"><img src="docs/images/run-prod-cd.png" width="260"/></a><br/>
+<sub><strong><a href=".github/workflows/prod_cd.yml">5. Trigger CD - Prod</a></strong></sub><br/>
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/prod_cd.yml"><img src="https://img.shields.io/badge/▶-Run%20workflow-2ea44f" alt="Run workflow"/></a>
+</td>
+<td align="center" width="33%">
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/dashboard.yml"><img src="docs/images/run-dashboard.png" width="260"/></a><br/>
+<sub><strong><a href=".github/workflows/dashboard.yml">6. Build Dashboard</a></strong></sub><br/>
+<a href="https://github.com/saghosh8/release-automation/actions/workflows/dashboard.yml"><img src="https://img.shields.io/badge/▶-Run%20workflow-2ea44f" alt="Run workflow"/></a>
+</td>
 </tr>
 </table>
 
