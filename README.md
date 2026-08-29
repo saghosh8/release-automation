@@ -12,6 +12,7 @@ Scaffold repos → cut release branches → tag & publish releases → fan out C
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
 ![Release Automation banner](docs/images/banner.gif)
+<!-- ☝️ General demo/overview gif (e.g. a quick tour of the Actions tab and the workflows) -->
 
 </div>
 
@@ -47,13 +48,28 @@ Each box below is its own `workflow_dispatch` job — trigger them manually, in 
 
 > 📌 **The five release workflows above take repos as plain `workflow_dispatch` inputs — no files to edit or commit before a run.** The dashboard is the odd one out: it runs itself.
 
-## Quick start
-
 <!--
-📸 ADD PIC: screenshot of the Actions tab → a workflow's "Run workflow" form
-with sample inputs filled in. Great for readers unfamiliar with workflow_dispatch.
-![Run workflow form](docs/images/run-workflow.png)
+📸 ADD PICS: one screenshot per workflow's "Run workflow" form (Actions tab → pick the
+workflow → "Run workflow" dropdown → inputs filled in). Six workflows, six screenshots:
+
+![Create Application Repository — Run workflow](docs/images/run-create-app-repos.png)
+![Create Release Branches — Run workflow](docs/images/run-create-release-branch.png)
+![Create and Publish Release Notes — Run workflow](docs/images/run-publish-release-notes.png)
+![Trigger CI Pipeline — Run workflow](docs/images/run-prod-ci.png)
+![Trigger CD - Prod Pipeline — Run workflow](docs/images/run-prod-cd.png)
+![Build and deploy dashboard — Run workflow](docs/images/run-dashboard.png)
+
+Suggested layout once you have all six — a 2x3 grid via an HTML table, or just
+stack them under each Quick start step below. Sample inputs to use per screenshot:
+  create-app-repos:         repo_names=application-one,application-two
+  create-release-branch:    release_name=SG_RELEASE, version=1.0.0, app_repos=application-one,application-two
+  publish-release-notes:    release_branch=SG_RELEASE_1.0.0, repo_tags=application-one:0.9.0-release-cfb154b,application-two:0.8.2-release-1a2b3c4
+  prod_ci:                  branch=release/SG_RELEASE_1.0.0, repositories=application-one,application-two
+  prod_cd:                  release_branch=release/SG_RELEASE_1.0.0, repo_tags=application-one:1.0.0-release-abc1234,application-two:1.0.0-release-81269a6
+  dashboard:                (no inputs — just the "Run workflow" button)
 -->
+
+## Quick start
 
 ```text
 1. Create the repo(s)
@@ -107,9 +123,10 @@ flowchart LR
 Because it rebuilds on a timer, the dashboard always reflects fresh data pulled via the GitHub API — no one has to remember to refresh it after a release.
 
 <!--
-📸 ADD PIC: screenshot of the live dashboard page (the GitHub Pages URL).
-This is the best spot for it — replace the line below once you have one:
-![Dashboard screenshot](docs/images/dashboard.png)
+📸 ADD PIC: full-page screenshot of the actual deployed dashboard (the GitHub Pages URL) —
+different from the top banner gif, which is a general demo. This one should show the
+real, current dashboard content so readers know what to expect before visiting the link.
+![Dashboard screenshot](docs/images/dashboard-fullpage.png)
 -->
 
 > ℹ️ Exact content shown on the dashboard depends on `generate_dashboard.py` (not covered above). If you want that documented here too, share the script and I'll add a "what you'll see" breakdown.
