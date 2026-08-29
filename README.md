@@ -104,7 +104,7 @@ Builds a status dashboard and publishes it to GitHub Pages — runs on a schedul
 [![View workflow](https://img.shields.io/badge/View-dashboard.yml-blue)](.github/workflows/dashboard.yml)
 [![Run workflow](https://img.shields.io/badge/▶-Run%20workflow-2ea44f)](https://github.com/saghosh8/release-automation/actions/workflows/dashboard.yml)
 
-<img src="docs/images/run-dashboard.png" width="700"/>
+![Dashboard](docs/images/dashboard.gif)
 
 ## Quick start
 
