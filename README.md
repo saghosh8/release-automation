@@ -11,7 +11,7 @@ Scaffold repos → cut release branches → tag & publish releases → fan out C
 ![Pages](https://img.shields.io/badge/GitHub_Pages-live_dashboard-222222?logo=githubpages&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
-![Release Automation architecture](docs/images/architecture.svg)
+![Release Automation architecture](docs/images/architecture.jpg)
 <!-- ☝️ Architecture diagram: control repo → GitHub API → application repos → releases/deploys, plus the dashboard flow -->
 
 </div>
