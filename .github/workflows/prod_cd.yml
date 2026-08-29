@@ -7,6 +7,10 @@ on:
         description: "Release branch name, e.g. release/SG_RELEASE_1.0.0"
         required: true
         type: string
+      repo_tags:
+        description: "Comma-separated repo:newTag pairs, e.g. application-one:2.0.0-release-273b809,application-two:2.0.0-release-4b78c40"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,9 +20,7 @@ jobs:
   trigger-cd-prod:
     name: Trigger CD - Prod
     runs-on: ubuntu-latest
-
     steps:
-
       # ==========================================================
       # 1. Validate inputs
       # ==========================================================
@@ -28,7 +30,6 @@ jobs:
           set -euo pipefail
 
           RELEASE_BRANCH="${{ inputs.release_branch }}"
-
           echo "Release branch: $RELEASE_BRANCH"
 
           if [[ -z "$RELEASE_BRANCH" ]]; then
@@ -37,53 +38,34 @@ jobs:
           fi
 
           echo "RELEASE_BRANCH=$RELEASE_BRANCH" >> "$GITHUB_ENV"
-          echo "INPUT_FILE=input_files/prod_New_tag.txt" >> "$GITHUB_ENV"
-
 
       # ==========================================================
-      # 2. Checkout repository to access input file
+      # 2. Validate repo_tags input
       # ==========================================================
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-
-      # ==========================================================
-      # 3. Validate input file exists
-      # ==========================================================
-      - name: Validate input file
+      - name: Validate repo_tags input
         shell: bash
         run: |
           set -euo pipefail
 
-          INPUT_FILE="${{ env.INPUT_FILE }}"
+          REPO_TAGS_INPUT="${{ inputs.repo_tags }}"
 
-          if [[ ! -f "$INPUT_FILE" ]]; then
-            echo "::error::Input file not found."
-            echo "::error::File: $INPUT_FILE"
+          if [[ -z "$REPO_TAGS_INPUT" ]]; then
+            echo "::error::repo_tags input cannot be empty."
+            echo "::error::Expected format: repo1:newTag1,repo2:newTag2"
             exit 1
           fi
 
-          if [[ ! -s "$INPUT_FILE" ]]; then
-            echo "::error::Input file is empty."
-            echo "::error::File: $INPUT_FILE"
-            exit 1
-          fi
-
-          echo "Input file exists and is not empty."
-          echo ""
-          echo "Contents:"
-          cat "$INPUT_FILE"
-
+          echo "Input received:"
+          echo "$REPO_TAGS_INPUT" | tr ',' '\n' | sed '/^[[:space:]]*$/d'
 
       # ==========================================================
-      # 4. Parse input file and trigger pipelines
+      # 3. Parse input and trigger pipelines
       # ==========================================================
       - name: Trigger CD - Prod pipelines
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }}
-          INPUT_FILE: input_files/prod_New_tag.txt
         run: |
           set -euo pipefail
 
@@ -93,13 +75,12 @@ jobs:
           fi
 
           RELEASE_BRANCH="$RELEASE_BRANCH"
-          INPUT_FILE="$INPUT_FILE"
+          REPO_TAGS_INPUT="${{ inputs.repo_tags }}"
 
-          echo "Parsing input file..."
+          echo "Parsing repo_tags input..."
           echo ""
 
           while IFS=':' read -r REPO_NAME IMAGE_TAG; do
-
             # Trim whitespace
             REPO_NAME="$(echo "$REPO_NAME" | xargs)"
             IMAGE_TAG="$(echo "$IMAGE_TAG" | xargs)"
@@ -116,32 +97,28 @@ jobs:
 
             echo "############################################################"
             echo "Processing repository: $REPO_NAME"
-            echo "Image tag            : $IMAGE_TAG"
-            echo "Environment          : prod"
+            echo "Image tag    : $IMAGE_TAG"
+            echo "Environment  : prod"
             echo "############################################################"
-
 
             # ====================================================
             # Resolve repository
             # ====================================================
             echo ""
             echo "Resolving repository..."
-
             REPO_FULL_NAME=$(gh repo view "$REPO_NAME" \
               --json nameWithOwner \
               --jq '.nameWithOwner') || {
-                echo "::error::Repository does not exist or token has no access."
-                echo "::error::Repository: $REPO_NAME"
-                exit 1
-              }
+              echo "::error::Repository does not exist or token has no access."
+              echo "::error::Repository: $REPO_NAME"
+              exit 1
+            }
 
             if [[ -z "$REPO_FULL_NAME" || "$REPO_FULL_NAME" == "null" ]]; then
               echo "::error::Could not resolve repository."
               exit 1
             fi
-
             echo "Repository: $REPO_FULL_NAME"
-
 
             # ====================================================
             # Verify CD - Prod workflow exists
@@ -163,7 +140,6 @@ jobs:
 
             echo "CD - Prod workflow found."
 
-
             # ====================================================
             # Trigger CD - Prod workflow
             # ====================================================
@@ -181,13 +157,12 @@ jobs:
             echo "Branch    : $RELEASE_BRANCH"
             echo "Inputs    :"
             echo "  - release_tag: $IMAGE_TAG"
-
             echo ""
             echo "############################################################"
             echo "TRIGGER SUCCESSFUL"
             echo "############################################################"
             echo ""
 
-          done < "$INPUT_FILE"
+          done < <(echo "$REPO_TAGS_INPUT" | tr ',' '\n')
 
           echo "All pipelines triggered successfully."
