@@ -12,8 +12,7 @@ Scaffold repos → cut release branches → tag & publish releases → fan out C
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
 
-![Release Automation banner](docs/videos/banner.mp4)
-
+<video src="docs/videos/banner.mp4" controls width="700"></video>
 </div>
 
 ---
