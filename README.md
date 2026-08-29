@@ -48,26 +48,18 @@ Each box below is its own `workflow_dispatch` job — trigger them manually, in 
 
 > 📌 **The five release workflows above take repos as plain `workflow_dispatch` inputs — no files to edit or commit before a run.** The dashboard is the odd one out: it runs itself.
 
-<!--
-📸 ADD PICS: one screenshot per workflow's "Run workflow" form (Actions tab → pick the
-workflow → "Run workflow" dropdown → inputs filled in). Six workflows, six screenshots:
-
-![Create Application Repository — Run workflow](docs/images/run-create-app-repos.png)
-![Create Release Branches — Run workflow](docs/images/run-create-release-branch.png)
-![Create and Publish Release Notes — Run workflow](docs/images/run-publish-release-notes.png)
-![Trigger CI Pipeline — Run workflow](docs/images/run-prod-ci.png)
-![Trigger CD - Prod Pipeline — Run workflow](docs/images/run-prod-cd.png)
-![Build and deploy dashboard — Run workflow](docs/images/run-dashboard.png)
-
-Suggested layout once you have all six — a 2x3 grid via an HTML table, or just
-stack them under each Quick start step below. Sample inputs to use per screenshot:
-  create-app-repos:         repo_names=application-one,application-two
-  create-release-branch:    release_name=SG_RELEASE, version=1.0.0, app_repos=application-one,application-two
-  publish-release-notes:    release_branch=SG_RELEASE_1.0.0, repo_tags=application-one:0.9.0-release-cfb154b,application-two:0.8.2-release-1a2b3c4
-  prod_ci:                  branch=release/SG_RELEASE_1.0.0, repositories=application-one,application-two
-  prod_cd:                  release_branch=release/SG_RELEASE_1.0.0, repo_tags=application-one:1.0.0-release-abc1234,application-two:1.0.0-release-81269a6
-  dashboard:                (no inputs — just the "Run workflow" button)
--->
+<table>
+<tr>
+<td align="center"><img src="docs/images/run-create-app-repos.png" width="260"/><br/><sub>1. Create App Repo</sub></td>
+<td align="center"><img src="docs/images/run-create-release-branch.png" width="260"/><br/><sub>2. Create Release Branch</sub></td>
+<td align="center"><img src="docs/images/run-publish-release-notes.png" width="260"/><br/><sub>3. Publish Release Notes</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/images/run-prod-ci.png" width="260"/><br/><sub>4. Trigger CI</sub></td>
+<td align="center"><img src="docs/images/run-prod-cd.png" width="260"/><br/><sub>5. Trigger CD - Prod</sub></td>
+<td align="center"><img src="docs/images/run-dashboard.png" width="260"/><br/><sub>6. Build Dashboard</sub></td>
+</tr>
+</table>
 
 ## Quick start
 
@@ -122,12 +114,7 @@ flowchart LR
 
 Because it rebuilds on a timer, the dashboard always reflects fresh data pulled via the GitHub API — no one has to remember to refresh it after a release.
 
-<!--
-📸 ADD PIC: full-page screenshot of the actual deployed dashboard (the GitHub Pages URL) —
-different from the top banner gif, which is a general demo. This one should show the
-real, current dashboard content so readers know what to expect before visiting the link.
-![Dashboard screenshot](docs/images/dashboard-fullpage.png)
--->
+![Live dashboard](docs/images/dashboard-fullpage.png)
 
 > ℹ️ Exact content shown on the dashboard depends on `generate_dashboard.py` (not covered above). If you want that documented here too, share the script and I'll add a "what you'll see" breakdown.
 
@@ -152,11 +139,7 @@ The release identifier **must** match `SG_RELEASE_<major>.<minor>.<patch>` — a
    - Permission to create new repos under the owning account
 3. Never hard-code the token in a workflow file.
 
-<!--
-📸 ADD PIC: screenshot of Settings → Secrets and variables → Actions,
-showing (redact the value!) that RELEASE_AUTOMATION_TOKEN is configured.
 ![Secret configured](docs/images/secret-setup.png)
--->
 
 <details>
 <summary><strong>Project structure</strong></summary>
