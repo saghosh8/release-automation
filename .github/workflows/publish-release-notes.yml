@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       repo_tags:
-        description: "Comma-separated repo:oldTag pairs, e.g. application-one:2.0.0-release-273b809,application-two:2.0.0-release-4b78c40"
+        description: "repo1:oldTag,repo2:oldTag"
         required: true
         type: string
 
