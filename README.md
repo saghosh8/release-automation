@@ -11,12 +11,8 @@ Scaffold repos → cut release branches → tag & publish releases → fan out C
 ![Pages](https://img.shields.io/badge/GitHub_Pages-live_dashboard-222222?logo=githubpages&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
-<!--
-📸 ADD PIC: a hero banner or GIF here — e.g. a quick screen recording of triggering
-a workflow from the Actions tab, or a screenshot of the live dashboard.
-Drop the image in something like `docs/videos/banner.mp4` and reference it:
-[Release Automation banner](docs/videos/banner.mp4)
--->
+
+![Release Automation banner](docs/videos/banner.mp4)
 
 </div>
 
