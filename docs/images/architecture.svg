@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <marker id="blueArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="greenArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#059669"/>
+    </marker>
+    <style>
+      .title{font:700 30px Arial,sans-serif;fill:#0f172a}
+      .subtitle{font:400 15px Arial,sans-serif;fill:#64748b}
+      .laneTitle{font:700 17px Arial,sans-serif}
+      .laneSub{font:400 12px Arial,sans-serif;fill:#475569}
+      .step{font:700 12px Arial,sans-serif;fill:#fff}
+      .boxTitle{font:700 15px Arial,sans-serif;fill:#0f172a}
+      .body{font:400 12px Arial,sans-serif;fill:#475569}
+      .small{font:400 11px Arial,sans-serif;fill:#64748b}
+      .env{font:700 14px Arial,sans-serif}
+      .note{font:400 12px Arial,sans-serif;fill:#334155}
+      .legend{font:400 11px Arial,sans-serif;fill:#475569}
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <!-- Header -->
+  <text x="800" y="42" text-anchor="middle" class="title">Release Automation Architecture</text>
+  <text x="800" y="67" text-anchor="middle" class="subtitle">Compact end-to-end application release lifecycle</text>
+
+  <!-- Swimlane headers -->
+  <rect x="40" y="92" width="1520" height="62" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <rect x="40" y="92" width="760" height="62" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="70" y="119" class="laneTitle" fill="#1d4ed8">APPLICATION REPOSITORIES</text>
+  <text x="70" y="140" class="laneSub">Developer work + automatic Dev CI/CD</text>
+  <text x="840" y="119" class="laneTitle" fill="#047857">CONTROL REPOSITORY</text>
+  <text x="840" y="140" class="laneSub">Release orchestration across 100s of application repos</text>
+
+  <!-- Top row: application flow -->
+  <g transform="translate(40,180)">
+    <!-- 1 -->
+    <rect width="276" height="150" rx="14" fill="#fff" stroke="#bfdbfe" stroke-width="2"/>
+    <circle cx="25" cy="25" r="17" fill="#2563eb"/><text x="25" y="29" text-anchor="middle" class="step">1</text>
+    <text x="55" y="30" class="boxTitle">Repo setup</text>
+    <text x="22" y="64" class="body">Create application repo if it does not exist.</text>
+    <rect x="22" y="98" width="232" height="34" rx="8" fill="#eff6ff"/>
+    <text x="138" y="119" text-anchor="middle" class="small">Control: create-app-repos.yml</text>
+  </g>
+
+  <line x1="318" y1="255" x2="348" y2="255" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g transform="translate(348,180)">
+    <!-- 2 -->
+    <rect width="276" height="150" rx="14" fill="#fff" stroke="#bfdbfe" stroke-width="2"/>
+    <circle cx="25" cy="25" r="17" fill="#2563eb"/><text x="25" y="29" text-anchor="middle" class="step">2</text>
+    <text x="55" y="30" class="boxTitle">Release branch</text>
+    <text x="22" y="64" class="body">Cut release/SG_RELEASE_x.y.z</text>
+    <text x="22" y="84" class="body">across the target application repos.</text>
+    <rect x="22" y="98" width="232" height="34" rx="8" fill="#eff6ff"/>
+    <text x="138" y="119" text-anchor="middle" class="small">Control: create-release-branch.yml</text>
+  </g>
+
+  <line x1="626" y1="255" x2="656" y2="255" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g transform="translate(656,180)">
+    <!-- 3 -->
+    <rect width="276" height="150" rx="14" fill="#fff" stroke="#bfdbfe" stroke-width="2"/>
+    <circle cx="25" cy="25" r="17" fill="#2563eb"/><text x="25" y="29" text-anchor="middle" class="step">3</text>
+    <text x="55" y="30" class="boxTitle">Feature work</text>
+    <text x="22" y="64" class="body">Developer branches from the release branch</text>
+    <text x="22" y="84" class="body">and commits changes.</text>
+    <rect x="22" y="105" width="232" height="27" rx="8" fill="#f8fafc"/>
+    <text x="138" y="123" text-anchor="middle" class="small">Manual • Developer</text>
+  </g>
+
+  <line x1="934" y1="255" x2="964" y2="255" stroke="#2563eb" stroke-width="2" marker-end="url(#blueArrow)"/>
+
+  <g transform="translate(964,180)">
+    <!-- 4 -->
+    <rect width="276" height="150" rx="14" fill="#fff" stroke="#93c5fd" stroke-width="2"/>
+    <circle cx="25" cy="25" r="17" fill="#2563eb"/><text x="25" y="29" text-anchor="middle" class="step">4</text>
+    <text x="55" y="30" class="boxTitle">Dev CI — automatic</text>
+    <text x="22" y="64" class="body">Runs on every push to a FEATURE branch.</text>
+    <text x="22" y="84" class="body">Does not run here on the release branch.</text>
+    <rect x="22" y="105" width="232" height="27" rx="8" fill="#dbeafe"/>
+    <text x="138" y="123" text-anchor="middle" class="small">App repo CI</text>
+  </g>
+
+  <line x1="1242" y1="255" x2="1272" y2="255" stroke="#2563eb" stroke-width="2" marker-end="url(#blueArrow)"/>
+
+  <g transform="translate(1272,180)">
+    <!-- 5 -->
+    <rect width="276" height="150" rx="14" fill="#fff" stroke="#93c5fd" stroke-width="2"/>
+    <circle cx="25" cy="25" r="17" fill="#2563eb"/><text x="25" y="29" text-anchor="middle" class="step">5</text>
+    <text x="55" y="30" class="boxTitle">Dev CD — automatic</text>
+    <text x="22" y="64" class="body">Feature branch is deployed</text>
+    <text x="22" y="84" class="body">automatically to DEV.</text>
+    <rect x="22" y="105" width="232" height="27" rx="8" fill="#dbeafe"/>
+    <text x="138" y="123" text-anchor="middle" class="small">App repo CD → DEV</text>
+  </g>
+
+  <!-- DEV environment -->
+  <rect x="1015" y="350" width="500" height="60" rx="12" fill="#eff6ff" stroke="#60a5fa" stroke-width="2"/>
+  <text x="1265" y="375" text-anchor="middle" class="env" fill="#1d4ed8">DEV ENVIRONMENT</text>
+  <text x="1265" y="395" text-anchor="middle" class="small">Automatic • every feature-branch push</text>
+  <path d="M1100 330 V350 M1400 330 V350" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="5 5"/>
+
+  <!-- Transition -->
+  <path d="M1380 330 V445 H130" stroke="#334155" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="1380" y="430" class="small" text-anchor="middle">after Dev testing</text>
+
+  <!-- Bottom row -->
+  <g transform="translate(40,480)">
+    <!-- 6 -->
+    <rect width="276" height="150" rx="14" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+    <circle cx="25" cy="25" r="17" fill="#475569"/><text x="25" y="29" text-anchor="middle" class="step">6</text>
+    <text x="55" y="30" class="boxTitle">Merge to release branch</text>
+    <text x="22" y="64" class="body">Feature branch is merged after</text>
+    <text x="22" y="84" class="body">development and Dev testing.</text>
+    <rect x="22" y="105" width="232" height="27" rx="8" fill="#f8fafc"/>
+    <text x="138" y="123" text-anchor="middle" class="small">Manual • Developer</text>
+  </g>
+
+  <line x1="318" y1="555" x2="348" y2="555" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g transform="translate(348,480)">
+    <!-- 7 -->
+    <rect width="276" height="150" rx="14" fill="#fff" stroke="#a7f3d0" stroke-width="2"/>
+    <circle cx="25" cy="25" r="17" fill="#059669"/><text x="25" y="29" text-anchor="middle" class="step">7</text>
+    <text x="55" y="30" class="boxTitle">Release-branch CI</text>
+    <text x="22" y="64" class="body">Control repo triggers CI on the</text>
+    <text x="22" y="84" class="body">release branch across ALL apps.</text>
+    <rect x="22" y="105" width="232" height="27" rx="8" fill="#ecfdf5"/>
+    <text x="138" y="123" text-anchor="middle" class="small">prod_ci.yml • broad fan-out</text>
+  </g>
+
+  <line x1="626" y1="555" x2="656" y2="555" stroke="#059669" stroke-width="2" marker-end="url(#greenArrow)"/>
+
+  <g transform="translate(656,480)">
+    <!-- 8 -->
+    <rect width="276" height="150" rx="14" fill="#fff" stroke="#a7f3d0" stroke-width="2"/>
+    <circle cx="25" cy="25" r="17" fill="#059669"/><text x="25" y="29" text-anchor="middle" class="step">8</text>
+    <text x="55" y="30" class="boxTitle">UAT deploy — manual</text>
+    <text x="22" y="64" class="body">Release-branch build/tag is deployed</text>
+    <text x="22" y="84" class="body">to UAT manually.</text>
+    <rect x="22" y="105" width="232" height="27" rx="8" fill="#ecfdf5"/>
+    <text x="138" y="123" text-anchor="middle" class="small">UAT uses the Step 7 build/tag</text>
+  </g>
+
+  <line x1="934" y1="555" x2="964" y2="555" stroke="#059669" stroke-width="2" marker-end="url(#greenArrow)"/>
+
+  <g transform="translate(964,480)">
+    <!-- 9 -->
+    <rect width="276" height="150" rx="14" fill="#fff" stroke="#a7f3d0" stroke-width="2"/>
+    <circle cx="25" cy="25" r="17" fill="#059669"/><text x="25" y="29" text-anchor="middle" class="step">9</text>
+    <text x="55" y="30" class="boxTitle">Publish release</text>
+    <text x="22" y="64" class="body">After UAT sign-off, create the</text>
+    <text x="22" y="84" class="body">official tag + GitHub Release notes.</text>
+    <rect x="22" y="105" width="232" height="27" rx="8" fill="#ecfdf5"/>
+    <text x="138" y="123" text-anchor="middle" class="small">publish-release-notes.yml</text>
+  </g>
+
+  <line x1="1242" y1="555" x2="1272" y2="555" stroke="#059669" stroke-width="2" marker-end="url(#greenArrow)"/>
+
+  <g transform="translate(1272,480)">
+    <!-- 10 -->
+    <rect width="276" height="150" rx="14" fill="#fff" stroke="#a7f3d0" stroke-width="2"/>
+    <circle cx="25" cy="25" r="17" fill="#059669"/><text x="25" y="29" text-anchor="middle" class="step">10</text>
+    <text x="55" y="30" class="boxTitle">Prod deploy — automatic</text>
+    <text x="22" y="64" class="body">Published release tag is picked up</text>
+    <text x="22" y="84" class="body">and deployed to PROD.</text>
+    <rect x="22" y="105" width="232" height="27" rx="8" fill="#ecfdf5"/>
+    <text x="138" y="123" text-anchor="middle" class="small">prod_cd.yml</text>
+  </g>
+
+  <!-- UAT / PROD environment strip -->
+  <rect x="675" y="650" width="250" height="52" rx="10" fill="#ecfdf5" stroke="#34d399" stroke-width="1.5"/>
+  <text x="800" y="672" text-anchor="middle" class="env" fill="#047857">UAT</text>
+  <text x="800" y="690" text-anchor="middle" class="small">Manual / controlled</text>
+
+  <rect x="1270" y="650" width="278" height="52" rx="10" fill="#f0fdf4" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="1409" y="672" text-anchor="middle" class="env" fill="#15803d">PRODUCTION</text>
+  <text x="1409" y="690" text-anchor="middle" class="small">Automatic</text>
+
+  <!-- Key architecture notes -->
+  <rect x="40" y="725" width="1020" height="130" rx="14" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="65" y="752" class="boxTitle">Key architecture points</text>
+  <circle cx="68" cy="775" r="3" fill="#2563eb"/><text x="80" y="779" class="note">Dev CI/CD belongs to each application repo and runs automatically ONLY for feature branches.</text>
+  <circle cx="68" cy="799" r="3" fill="#059669"/><text x="80" y="803" class="note">Release branches are cut in bulk by the Control Repository for the target applications.</text>
+  <circle cx="68" cy="823" r="3" fill="#059669"/><text x="80" y="827" class="note">Release-branch CI is fanned out across all selected application repos before UAT.</text>
+  <circle cx="550" cy="775" r="3" fill="#059669"/><text x="562" y="779" class="note">The Step 7 build/tag is the artifact used for UAT.</text>
+  <circle cx="550" cy="799" r="3" fill="#059669"/><text x="562" y="803" class="note">After UAT sign-off, the release is tagged and published, then PROD deploy is automated.</text>
+
+  <!-- Legend -->
+  <rect x="1080" y="725" width="480" height="130" rx="14" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="1105" y="752" class="boxTitle">Legend</text>
+  <circle cx="1110" cy="777" r="6" fill="#2563eb"/><text x="1125" y="781" class="legend">Application repository / app-owned automation</text>
+  <circle cx="1110" cy="801" r="6" fill="#059669"/><text x="1125" y="805" class="legend">Control repository / release orchestration</text>
+  <line x1="1335" y1="777" x2="1370" y2="777" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/><text x="1380" y="781" class="legend">Flow</text>
+  <line x1="1335" y1="801" x2="1370" y2="801" stroke="#60a5fa" stroke-width="2" stroke-dasharray="5 5"/><text x="1380" y="805" class="legend">Environment relationship</text>
+</svg>
