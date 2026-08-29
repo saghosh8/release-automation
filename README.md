@@ -270,3 +270,13 @@ Then open a PR.
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
+
+---
+
+## ⭐ Support
+
+If you found this repository useful:
+
+<a href="https://github.com/saghosh8/release-automation">
+  <img src="https://img.shields.io/github/stars/saghosh8/release-automation?style=for-the-badge&logo=github&logoColor=white&label=STAR%20THIS%20REPO" />
+</a>
