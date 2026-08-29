@@ -11,8 +11,8 @@ Scaffold repos → cut release branches → tag & publish releases → fan out C
 ![Pages](https://img.shields.io/badge/GitHub_Pages-live_dashboard-222222?logo=githubpages&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
-![Release Automation banner](docs/images/banner.gif)
-<!-- ☝️ General demo/overview gif (e.g. a quick tour of the Actions tab and the workflows) -->
+![Release Automation architecture](docs/images/architecture.svg)
+<!-- ☝️ Architecture diagram: control repo → GitHub API → application repos → releases/deploys, plus the dashboard flow -->
 
 </div>
 
@@ -159,7 +159,7 @@ flowchart LR
 
 Because it rebuilds on a timer, the dashboard always reflects fresh data pulled via the GitHub API — no one has to remember to refresh it after a release.
 
-![Live dashboard](docs/images/banner.gif)
+![Live dashboard](docs/images/dashboard-fullpage.png)
 
 > ℹ️ Exact content shown on the dashboard depends on `generate_dashboard.py` (not covered above). If you want that documented here too, share the script and I'll add a "what you'll see" breakdown.
 
