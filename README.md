@@ -159,7 +159,7 @@ flowchart LR
 
 Because it rebuilds on a timer, the dashboard always reflects fresh data pulled via the GitHub API — no one has to remember to refresh it after a release.
 
-![Live dashboard](docs/images/dashboard-fullpage.png)
+![Live dashboard](docs/images/dashboard.gif)
 
 > ℹ️ Exact content shown on the dashboard depends on `generate_dashboard.py` (not covered above). If you want that documented here too, share the script and I'll add a "what you'll see" breakdown.
 
