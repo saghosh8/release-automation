@@ -161,8 +161,6 @@ Because it rebuilds on a timer, the dashboard always reflects fresh data pulled 
 
 ![Live Dashboard](docs/images/dashboard.gif)
 
-> ℹ️ Exact content shown on the dashboard depends on `generate_dashboard.py` (not covered above). If you want that documented here too, share the script and I'll add a "what you'll see" breakdown.
-
 **One-time setup:** enable Pages under *Settings → Pages → Build and deployment → Source: GitHub Actions*, since `dashboard.yml` deploys via the Pages API (`permissions: pages: write`, `id-token: write`) rather than pushing to a `gh-pages` branch.
 
 ## Naming conventions
