@@ -1,3 +1,16 @@
+# Application configuration used by the repository creation workflow.
+# Define the application name and the standard project structure to generate.
+#
+# This configuration generates:
+# - Source code structure under src/
+# - Maven project files
+# - Dockerfile
+# - Helm chart and Kubernetes templates
+# - Configuration, deployment, service, ingress and HPA files
+#
+# Update this file when you want to change the structure generated for each application.
+
+
 values:
   # APP_NAME is NOT set here — it is taken automatically from the
   # repository name you pass in the "repo_names" workflow input,
